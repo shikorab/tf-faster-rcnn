@@ -157,6 +157,6 @@ def _compute_targets(ex_rois, gt_rois):
 
   assert ex_rois.shape[0] == gt_rois.shape[0]
   assert ex_rois.shape[1] == 4
-  assert gt_rois.shape[1] == 5
+  assert gt_rois.shape[1] == 4
 
-  return bbox_transform(ex_rois, gt_rois[:, :4]).astype(np.float32, copy=False)
+  return bbox_transform(ex_rois, gt_rois).astype(np.float32, copy=False)

@@ -20,6 +20,7 @@ import os
 import sys
 import glob
 import time
+import math
 
 import tensorflow as tf
 from tensorflow.python import pywrap_tensorflow
@@ -81,6 +82,8 @@ class SolverWrapper(object):
 
   def from_snapshot(self, sess, sfile, nfile):
     print('Restoring model snapshots from {:s}'.format(sfile))
+    init = tf.global_variables_initializer()
+    sess.run(init)
     self.saver.restore(sess, sfile)
     print('Restored.')
     # Needs to restore the other hyper-parameters/states for training, (TODO xinlei) I have
@@ -126,6 +129,7 @@ class SolverWrapper(object):
       # Set learning rate and momentum
       lr = tf.Variable(cfg.TRAIN.LEARNING_RATE, trainable=False)
       self.optimizer = tf.train.MomentumOptimizer(lr, cfg.TRAIN.MOMENTUM)
+      #self.optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
 
       # Compute the gradients with regard to the loss
       gvs = self.optimizer.compute_gradients(loss)
@@ -145,7 +149,11 @@ class SolverWrapper(object):
         train_op = self.optimizer.apply_gradients(gvs)
 
       # We will handle the snapshots ourselves
-      self.saver = tf.train.Saver(max_to_keep=100000)
+      variables = tf.global_variables()
+      var_keep_dic = self.get_variables_in_checkpoint_file(self.pretrained_model)
+      variables_to_restore = self.net.get_variables_to_restore(variables, var_keep_dic)
+
+      self.saver = tf.train.Saver(variables_to_restore, max_to_keep=100000, reshape=True)
       # Write the train and validation information to tensorboard
       self.writer = tf.summary.FileWriter(self.tbdir, sess.graph)
       self.valwriter = tf.summary.FileWriter(self.tbvaldir)
@@ -186,7 +194,8 @@ class SolverWrapper(object):
     var_keep_dic = self.get_variables_in_checkpoint_file(self.pretrained_model)
     # Get the variables to restore, ignoring the variables to fix
     variables_to_restore = self.net.get_variables_to_restore(variables, var_keep_dic)
-
+    init = tf.global_variables_initializer()
+    sess.run(init)
     restorer = tf.train.Saver(variables_to_restore)
     restorer.restore(sess, self.pretrained_model)
     print('Loaded.')
@@ -240,6 +249,7 @@ class SolverWrapper(object):
       ss_paths.remove(sfile)
 
   def train_model(self, sess, max_iters):
+    accum_results = None
     # Build data layers for both training and validation set
     self.data_layer = RoIDataLayer(self.roidb, self.imdb.num_classes)
     self.data_layer_val = RoIDataLayer(self.valroidb, self.imdb.num_classes, random=True)
@@ -278,7 +288,7 @@ class SolverWrapper(object):
       blobs = self.data_layer.forward()
 
       now = time.time()
-      if iter == 1 or now - last_summary_time > cfg.TRAIN.SUMMARY_INTERVAL:
+      if False: #iter == 1 or now - last_summary_time > cfg.TRAIN.SUMMARY_INTERVAL:
         # Compute the graph with summary
         rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, total_loss, summary = \
           self.net.train_step_with_summary(sess, blobs, train_op)
@@ -290,16 +300,31 @@ class SolverWrapper(object):
         last_summary_time = now
       else:
         # Compute the graph without summary
-        rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, total_loss = \
-          self.net.train_step(sess, blobs, train_op)
-      timer.toc()
+        rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, total_loss, pred, pred_prob, pred_bbox = \
+        self.net.train_step(sess, blobs, train_op)
+        gt_bbox = blobs['gt_boxes']
+        gt = blobs['gt_labels'][:, :, 0]
+        for query_index in range(gt.shape[0]):
+          results = iou_test(gt[query_index], gt_bbox, pred[query_index], pred_prob[query_index], pred_bbox, blobs['im_info'])
+          # accumulate results
+          if accum_results is None:
+            accum_results = results
+          else:
+            for key in results:
+              accum_results[key] += results[key]
 
-      # Display training information
-      if iter % (cfg.TRAIN.DISPLAY) == 0:
-        print('iter: %d / %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
-              '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> lr: %f' % \
-              (iter, max_iters, total_loss, rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, lr.eval()))
-        print('speed: {:.3f}s / iter'.format(timer.average_time))
+        timer.toc()
+
+        # Display training information
+        if iter % (cfg.TRAIN.DISPLAY) == 0:
+          sub_iou = float(accum_results['sub_iou']) / accum_results['total']
+          obj_iou = float(accum_results['obj_iou']) / accum_results['total']
+
+          print('iter: %d / %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
+                  '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> lr: %f' % \
+                  (iter, max_iters, total_loss, rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, lr.eval()))
+          print('speed: {:.3f}s / iter'.format(timer.average_time))
+          print('sub_iou: {} obj_iou {}'.format(sub_iou, obj_iou))
 
       # Snapshotting
       if iter % cfg.TRAIN.SNAPSHOT_ITERS == 0:
@@ -357,7 +382,7 @@ def filter_roidb(roidb):
   num_after = len(filtered_roidb)
   print('Filtered {} roidb entries: {} -> {}'.format(num - num_after,
                                                      num, num_after))
-  return filtered_roidb
+  return roidb
 
 
 def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
@@ -376,3 +401,58 @@ def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
     print('Solving...')
     sw.train_model(sess, max_iters)
     print('done solving')
+
+MASK_SHAPE = (32, 32)
+def iou_test(gt, gt_bbox, pred, pred_prob, pred_bbox, im_info):
+    results = {}
+    # number of objects
+    results["total"] = 1
+
+    results["sub_iou"] = 0.0
+    results["obj_iou"] = 0.0
+
+    mask_sub_gt = np.zeros(MASK_SHAPE, dtype=bool)
+    mask_obj_gt = np.zeros(MASK_SHAPE, dtype=bool)
+    mask_sub_pred = np.zeros(MASK_SHAPE, dtype=bool)
+    mask_obj_pred = np.zeros(MASK_SHAPE, dtype=bool)
+    
+    # most probable sub and obj
+    i = np.argmax(pred_prob[:, 1])
+    mask_sub_pred[int(pred_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
+	    int(pred_bbox[i][1] * MASK_SHAPE[1]):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
+    i = np.argmax(pred_prob[:, 2])
+    mask_obj_pred[int(pred_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
+	    int(pred_bbox[i][1] * MASK_SHAPE[1]):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
+
+    # GT mask
+    for i in range(gt.shape[0]):
+        if gt[i] == 1:
+            mask_sub_gt[int(gt_bbox[i][0] / im_info[0] * MASK_SHAPE[0]):int(math.ceil(gt_bbox[i][2] / im_info[0] * MASK_SHAPE[0])),
+            int(gt_bbox[i][1] / im_info[1] * MASK_SHAPE[1]):int(math.ceil(gt_bbox[i][3] / im_info[1] * MASK_SHAPE[1]))] = True
+        if gt[i] == 2:
+            mask_obj_gt[int(gt_bbox[i][0] / im_info[0] * MASK_SHAPE[0]):int(math.ceil(gt_bbox[i][2] / im_info[0] * MASK_SHAPE[0])),
+            int(gt_bbox[i][1] / im_info[1] * MASK_SHAPE[1]):int(math.ceil(gt_bbox[i][3] / im_info[1] * MASK_SHAPE[1]))] = True
+
+    # predicted mask
+    for i in range(pred.shape[0]):
+        if pred[i] == 1:
+	    mask_sub_pred[int(pred_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
+	    int(pred_bbox[i][1] * MASK_SHAPE[1]):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
+        if pred[i] == 2:
+	    mask_obj_pred[int(pred_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
+	    int(pred_bbox[i][1] * MASK_SHAPE[1]):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
+
+    sub_iou = iou(mask_sub_gt, mask_sub_pred)
+    obj_iou = iou(mask_obj_gt, mask_obj_pred)
+
+    results["sub_iou"] += sub_iou
+    results["obj_iou"] += obj_iou
+
+    return results
+
+def iou(mask_a, mask_b):
+    union = np.sum(np.logical_or(mask_a, mask_b))
+    if union == 0:
+        return 0.0
+    intersection = np.sum(np.logical_and(mask_a, mask_b))
+    return float(intersection) / float(union)

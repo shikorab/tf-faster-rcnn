@@ -29,6 +29,14 @@ case ${DATASET} in
     ANCHORS="[8,16,32]"
     RATIOS="[0.5,1,2]"
     ;;
+  visual_genome)
+    TRAIN_IMDB="visual_genome_test"
+    TEST_IMDB="visual_genome_test"
+    STEPSIZE="[80000]"
+    ITERS=500
+    ANCHORS="[8,16,32]"
+    RATIOS="[0.5,1,2]"
+    ;;
   coco)
     TRAIN_IMDB="coco_2014_train+coco_2014_valminusminival"
     TEST_IMDB="coco_2014_minival"

@@ -119,6 +119,7 @@ class imdb(object):
       entry = {'boxes': boxes,
                'gt_overlaps': self.roidb[i]['gt_overlaps'],
                'gt_classes': self.roidb[i]['gt_classes'],
+               'query': self.roidb[i]['query'],
                'flipped': True}
       self.roidb.append(entry)
     self._image_index = self._image_index * 2
@@ -154,21 +155,21 @@ class imdb(object):
     for i in range(self.num_images):
       # Checking for max_overlaps == 1 avoids including crowd annotations
       # (...pretty hacking :/)
-      max_gt_overlaps = self.roidb[i]['gt_overlaps'].toarray().max(axis=1)
-      gt_inds = np.where((self.roidb[i]['gt_classes'] > 0) &
-                         (max_gt_overlaps == 1))[0]
-      gt_boxes = self.roidb[i]['boxes'][gt_inds, :]
-      gt_areas = self.roidb[i]['seg_areas'][gt_inds]
-      valid_gt_inds = np.where((gt_areas >= area_range[0]) &
-                               (gt_areas <= area_range[1]))[0]
-      gt_boxes = gt_boxes[valid_gt_inds, :]
-      num_pos += len(valid_gt_inds)
+      #max_gt_overlaps = self.roidb[i]['gt_overlaps'].toarray().max(axis=1)
+      #gt_inds = np.where((self.roidb[i]['gt_classes'] > 0) &
+      #                   (max_gt_overlaps == 1))[0]
+      gt_boxes = self.roidb[i]['boxes']
+      gt_areas = self.roidb[i]['seg_areas']
+      #valid_gt_inds = np.where((gt_areas >= area_range[0]) &
+      #                         (gt_areas <= area_range[1]))[0]
+      #gt_boxes = gt_boxes[valid_gt_inds, :]
+      num_pos += len(gt_boxes.shape[0])
 
       if candidate_boxes is None:
         # If candidate_boxes is not supplied, the default is to use the
         # non-ground-truth boxes from this roidb
-        non_gt_inds = np.where(self.roidb[i]['gt_classes'] == 0)[0]
-        boxes = self.roidb[i]['boxes'][non_gt_inds, :]
+        #non_gt_inds = np.where(self.roidb[i]['gt_classes'] == 0)[0]
+        boxes = self.roidb[i]['boxes']
       else:
         boxes = candidate_boxes[i]
       if boxes.shape[0] == 0:
@@ -239,6 +240,7 @@ class imdb(object):
         'gt_overlaps': overlaps,
         'flipped': False,
         'seg_areas': np.zeros((num_boxes,), dtype=np.float32),
+        'query': np.zeros((234,), dtype=np.float32)
       })
     return roidb
 
@@ -253,6 +255,9 @@ class imdb(object):
                                                  b[i]['gt_overlaps']])
       a[i]['seg_areas'] = np.hstack((a[i]['seg_areas'],
                                      b[i]['seg_areas']))
+
+      a[i]['query'] = np.hstack((a[i]['query'],
+		                              b[i]['query']))
     return a
 
   def competition_mode(self, on):

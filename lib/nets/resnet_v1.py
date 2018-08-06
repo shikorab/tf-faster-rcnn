@@ -55,6 +55,7 @@ class resnetv1(Network):
   def _crop_pool_layer(self, bottom, rois, name):
     with tf.variable_scope(name) as scope:
       batch_ids = tf.squeeze(tf.slice(rois, [0, 0], [-1, 1], name="batch_id"), [1])
+      pw_batch_ids = tf.tile(batch_ids, tf.shape(batch_ids))
       # Get the normalized coordinates of bboxes
       bottom_shape = tf.shape(bottom)
       height = (tf.to_float(bottom_shape[1]) - 1.) * np.float32(self._feat_stride[0])
@@ -63,17 +64,40 @@ class resnetv1(Network):
       y1 = tf.slice(rois, [0, 2], [-1, 1], name="y1") / height
       x2 = tf.slice(rois, [0, 3], [-1, 1], name="x2") / width
       y2 = tf.slice(rois, [0, 4], [-1, 1], name="y2") / height
+      pw_x1, pw_y1, pw_x2, pw_y2 = self.union_box(x1, y1, x2, y2)
+
       # Won't be back-propagated to rois anyway, but to save time
       bboxes = tf.stop_gradient(tf.concat([y1, x1, y2, x2], 1))
+      pw_bboxes = tf.stop_gradient(tf.stack([pw_y1, pw_x1, pw_y2, pw_x2], axis=2))
+
+      bottom = resnet_utils.conv2d_same(bottom, 512, 1, 1, scope="bottom_conv")
+
       if cfg.RESNET.MAX_POOL:
         pre_pool_size = cfg.POOLING_SIZE * 2
         crops = tf.image.crop_and_resize(bottom, bboxes, tf.to_int32(batch_ids), [pre_pool_size, pre_pool_size],
                                          name="crops")
         crops = slim.max_pool2d(crops, [2, 2], padding='SAME')
+        pw_bboxes_reshaped = tf.reshape(pw_bboxes, [-1, 4])
+        pw_crops_reshaped = tf.image.crop_and_resize(bottom, pw_bboxes_reshaped, tf.to_int32(pw_batch_ids), [pre_pool_size, pre_pool_size],
+                                       name="pw_crops")
+        pw_crops = slim.max_pool2d(pw_crops_reshaped, [2, 2], padding='SAME')
+        #N = tf.slice(tf.shape(crops), [0], [1])
+        #shape = tf.concat((N, tf.shape(crops)), 0)
+        #pw_crops = tf.reshape(pw_crops, shape)
+
       else:
         crops = tf.image.crop_and_resize(bottom, bboxes, tf.to_int32(batch_ids), [cfg.POOLING_SIZE, cfg.POOLING_SIZE],
                                          name="crops")
-    return crops
+        pw_bboxes_reshaped = tf.reshape(pw_bboxes, [-1, 4])
+        pw_crops = tf.image.crop_and_resize(bottom, pw_bboxes_reshaped, tf.to_int32(pw_batch_ids), [1, 1],
+                                         name="pw_crops")
+        #N = tf.slice(tf.shape(crops), [0], [1])
+        #shape = tf.concat((N, tf.shape(crops)), 0)
+        #pw_crops = tf.reshape(pw_crops, shape)
+
+    self._predictions['pred_bbox'] = tf.stop_gradient(tf.concat([x1, y1, x2, y2], axis=1))
+    self._predictions['pw_pred_bbox'] = tf.reshape(tf.stop_gradient(tf.concat([pw_x1, pw_y1, pw_x2, pw_y2], axis=1)), [-1, 4])
+    return crops, pw_crops
 
   # Do the first few layers manually, because 'SAME' padding can behave inconsistently
   # for images of different sizes: sometimes 0, sometimes 1
@@ -90,6 +114,7 @@ class resnetv1(Network):
     # Now the base is always fixed during training
     with slim.arg_scope(resnet_arg_scope(is_training=False)):
       net_conv = self._build_base()
+      self._layers['base'] = net_conv
     if cfg.RESNET.FIXED_BLOCKS > 0:
       with slim.arg_scope(resnet_arg_scope(is_training=False)):
         net_conv, _ = resnet_v1.resnet_v1(net_conv,
@@ -98,6 +123,7 @@ class resnetv1(Network):
                                            include_root_block=False,
                                            reuse=reuse,
                                            scope=self._scope)
+        self._layers['fixed'] = net_conv
     if cfg.RESNET.FIXED_BLOCKS < 3:
       with slim.arg_scope(resnet_arg_scope(is_training=is_training)):
         net_conv, _ = resnet_v1.resnet_v1(net_conv,
@@ -106,23 +132,33 @@ class resnetv1(Network):
                                            include_root_block=False,
                                            reuse=reuse,
                                            scope=self._scope)
+        self._layers['fixed_block2'] = net_conv
 
     self._act_summaries.append(net_conv)
     self._layers['head'] = net_conv
 
     return net_conv
 
-  def _head_to_tail(self, pool5, is_training, reuse=None):
+  def _head_to_tail(self, pool5, pw_pool5, is_training, reuse=None):
     with slim.arg_scope(resnet_arg_scope(is_training=is_training)):
       fc7, _ = resnet_v1.resnet_v1(pool5,
                                    self._blocks[-1:],
                                    global_pool=False,
                                    include_root_block=False,
                                    reuse=reuse,
-                                   scope=self._scope)
+                                   scope=self._scope + "__new")
+      fc7 = resnet_utils.conv2d_same(fc7, 512, 1, 1, scope="fc7_conv")
+      pw_fc7, _ = resnet_v1.resnet_v1(pw_pool5,
+                                   self._blocks[-1:],
+                                   global_pool=False,
+                                   include_root_block=False,
+                                   reuse=reuse,
+                                   scope=self._scope + '_pw')
+      pw_fc7 = resnet_utils.conv2d_same(pw_fc7, 512, 1, 1, scope="pw_fc7_conv")
       # average pooling done by reduce_mean
       fc7 = tf.reduce_mean(fc7, axis=[1, 2])
-    return fc7
+      pw_fc7 = tf.reduce_mean(pw_fc7, axis=[1, 2])
+    return fc7, pw_fc7
 
   def _decide_blocks(self):
     # choose different blocks for different number of layers
@@ -159,10 +195,13 @@ class resnetv1(Network):
       if v.name == (self._scope + '/conv1/weights:0'):
         self._variables_to_fix[v.name] = v
         continue
+      #if "__new" in v.name:
+      #    continue
       if v.name.split(':')[0] in var_keep_dic:
         print('Variables restored: %s' % v.name)
         variables_to_restore.append(v)
-
+      
+      
     return variables_to_restore
 
   def fix_variables(self, sess, pretrained_model):

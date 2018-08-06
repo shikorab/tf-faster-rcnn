@@ -104,6 +104,21 @@ if __name__ == '__main__':
   # train set
   imdb, roidb = combined_roidb(args.imdb_name)
   print('{:d} roidb entries'.format(len(roidb)))
+  #class IMDB(object):
+  #    def __init__(self):
+  #      self.num_classes = 500
+  #      self.name = "vg"
+  #    def __len__(self):
+  #        return 0
+  #
+  #    def __iter__(self):
+  #        return self
+  #
+  #    def next(self):  # Python 3: def __next__(self)
+  #        raise StopIteration
+
+  #imdb = IMDB()
+  #roidb = IMDB()
 
   # output directory where the models are saved
   output_dir = get_output_dir(imdb, args.tag)
@@ -116,24 +131,15 @@ if __name__ == '__main__':
   # also add the validation set, but with no flipping images
   orgflip = cfg.TRAIN.USE_FLIPPED
   cfg.TRAIN.USE_FLIPPED = False
-  _, valroidb = combined_roidb(args.imdbval_name)
+  #_, valroidb = combined_roidb(args.imdbval_name)
+  valroidb = roidb
   print('{:d} validation roidb entries'.format(len(valroidb)))
   cfg.TRAIN.USE_FLIPPED = orgflip
+  #valroidb = IMDB()
+  #valroidb.name = "vg"
 
-  # load network
-  if args.net == 'vgg16':
-    net = vgg16()
-  elif args.net == 'res50':
-    net = resnetv1(num_layers=50)
-  elif args.net == 'res101':
-    net = resnetv1(num_layers=101)
-  elif args.net == 'res152':
-    net = resnetv1(num_layers=152)
-  elif args.net == 'mobile':
-    net = mobilenetv1()
-  else:
-    raise NotImplementedError
-    
+  net = resnetv1(num_layers=101)
+
   train_net(net, imdb, roidb, valroidb, output_dir, tb_dir,
             pretrained_model=args.weight,
             max_iters=args.max_iters)
