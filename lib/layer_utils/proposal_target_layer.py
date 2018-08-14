@@ -55,7 +55,7 @@ def proposal_target_layer(rpn_rois, rpn_scores, gt_boxes, gt_labels, _num_classe
   return rois, roi_scores, labels, bbox_targets, bbox_inside_weights, bbox_outside_weights
 
 
-def _get_bbox_regression_labels(bbox_target_data, num_classes):
+def _get_bbox_regression_labels(bbox_target_data, nof_fgs):
   """Bounding-box regression targets (bbox_target_data) are stored in a
   compact form N x (class, tx, ty, tw, th)
 
@@ -79,6 +79,7 @@ def _get_bbox_regression_labels(bbox_target_data, num_classes):
   #  bbox_inside_weights[ind, start:end] = cfg.TRAIN.BBOX_INSIDE_WEIGHTS
   bbox_targets = bbox_target_data
   bbox_inside_weights[:] = cfg.TRAIN.BBOX_INSIDE_WEIGHTS
+  bbox_inside_weights[nof_fgs:, :] = 0
   return bbox_targets, bbox_inside_weights
 
 
@@ -101,9 +102,7 @@ def _sample_rois(all_rois, all_scores, gt_boxes, gt_labels, fg_rois_per_image, r
   examples.
   """
   # overlaps: (rois x gt_boxes)
-  overlaps = bbox_overlaps(
-    np.ascontiguousarray(all_rois[:,1:5], dtype=np.float),
-    np.ascontiguousarray(gt_boxes, dtype=np.float))
+  overlaps = bbox_overlaps(np.ascontiguousarray(all_rois[:,1:5], dtype=np.float), np.ascontiguousarray(gt_boxes, dtype=np.float))
   gt_assignment = overlaps.argmax(axis=1)
   max_overlaps = overlaps.max(axis=1)
   labels = gt_labels[:, gt_assignment, 0]
@@ -142,11 +141,11 @@ def _sample_rois(all_rois, all_scores, gt_boxes, gt_labels, fg_rois_per_image, r
   labels[:, int(fg_rois_per_image):] = 0
   rois = all_rois[keep_inds]
   roi_scores = all_scores[keep_inds]
-
+  gt_boxes = gt_boxes[gt_assignment[keep_inds]]
   bbox_target_data = _compute_targets(
-    rois[:, 1:5], gt_boxes[gt_assignment[keep_inds]])
+    rois[:, 1:5], gt_boxes)
 
   bbox_targets, bbox_inside_weights = \
-    _get_bbox_regression_labels(bbox_target_data, num_classes)
+    _get_bbox_regression_labels(bbox_target_data, int(fg_rois_per_image))
 
   return labels, rois, roi_scores, bbox_targets, bbox_inside_weights

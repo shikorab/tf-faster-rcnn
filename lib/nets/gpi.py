@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 class Gpi(object):
-    def __init__(self, nof_node_features=516, nof_relation_features=516, rnn_steps=1, layers = [500], gpi_type="FeatureAttention"):
+    def __init__(self, nof_node_features=1028, nof_relation_features=1028, rnn_steps=1, layers = [1028, 1028], gpi_type="FeatureAttention"):
         self.nof_node_features = nof_node_features
         self.nof_relation_features = nof_relation_features
         self.nof_rnn_steps = rnn_steps
@@ -20,7 +20,7 @@ class Gpi(object):
                          scope="gpi")
             self.reuse = True
 
-        return tf.concat((pred_node_features, graph_features), axis=1)
+        return pred_node_features #;tf.concat((node_features, pred_node_features), axis=1)
 
     def nn(self, features, layers, out, scope_name, last_activation=None):
         with tf.variable_scope(scope_name):

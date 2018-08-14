@@ -24,6 +24,20 @@ import math
 
 import tensorflow as tf
 from tensorflow.python import pywrap_tensorflow
+from model.bbox_transform import clip_boxes, bbox_transform_inv
+
+
+def _clip_boxes(boxes, im_shape):
+  """Clip boxes to image boundaries."""
+  # x1 >= 0
+  boxes[:, 0] = np.maximum(boxes[:, 0], 0)
+  # y1 >= 0
+  boxes[:, 1] = np.maximum(boxes[:, 1], 0)
+  # x2 < im_shape[1]
+  boxes[:, 2] = np.minimum(boxes[:, 2], im_shape[1] - 1)
+  # y2 < im_shape[0]
+  boxes[:, 3] = np.minimum(boxes[:, 3], im_shape[0] - 1)
+  return boxes
 
 class SolverWrapper(object):
   """
@@ -300,18 +314,30 @@ class SolverWrapper(object):
         last_summary_time = now
       else:
         # Compute the graph without summary
-        rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, total_loss, pred, pred_prob, pred_bbox = \
-        self.net.train_step(sess, blobs, train_op)
-        gt_bbox = blobs['gt_boxes']
-        gt = blobs['gt_labels'][:, :, 0]
-        for query_index in range(gt.shape[0]):
-          results = iou_test(gt[query_index], gt_bbox, pred[query_index], pred_prob[query_index], pred_bbox, blobs['im_info'])
-          # accumulate results
-          if accum_results is None:
-            accum_results = results
-          else:
-            for key in results:
-              accum_results[key] += results[key]
+        try:
+          rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, total_loss, pred, pred_prob, pred_bbox, bbox_pred, rois = \
+          self.net.train_step(sess, blobs, train_op)
+          gt_bbox = blobs['gt_boxes']
+          gt = blobs['gt_labels'][:, :, 0]
+          im = blobs["im_info"]
+          boxes = rois[:, 1:5]
+          bbox_pred = np.reshape(bbox_pred, [bbox_pred.shape[0], -1])
+          # Apply bounding-box regression deltas
+          box_deltas = bbox_pred * np.array(cfg.TRAIN.BBOX_NORMALIZE_STDS) + np.array(cfg.TRAIN.BBOX_NORMALIZE_MEANS)
+          pred_boxes = bbox_transform_inv(boxes, box_deltas)
+          pred_boxes = _clip_boxes(pred_boxes, im)
+          pred_boxes /= 600.0
+          #pred_boxes = pred_bbox
+          for query_index in range(gt.shape[0]):
+            results = iou_test(gt[query_index], gt_bbox, pred[query_index], pred_prob[query_index], pred_boxes, blobs['im_info'])
+            # accumulate results
+            if accum_results is None:
+              accum_results = results
+            else:
+              for key in results:
+                accum_results[key] += results[key]
+        except:
+          print("error")
 
         timer.toc()
 

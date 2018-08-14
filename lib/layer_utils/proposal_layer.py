@@ -80,6 +80,6 @@ def proposal_layer_tf(rpn_cls_prob, rpn_bbox_pred, im_info, cfg_key, _feat_strid
   batch_inds = tf.zeros((tf.shape(indices)[0], 1), dtype=tf.float32)
   blob = tf.concat([batch_inds, boxes], 1)
 
-  return blob, scores
+  return blob, scores, indices
 
 

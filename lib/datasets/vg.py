@@ -189,6 +189,7 @@ class vg(imdb):
                                 image.objects[i].y + image.objects[i].height > 1023:
           continue
         if not np.array_equal(image.objects_labels[i], sub):
+          i_index += 1
           continue
         j_index = 0
         for j in range(image.objects_labels.shape[0]):
@@ -196,6 +197,7 @@ class vg(imdb):
             continue
 
           if not np.array_equal(image.objects_labels[j], obj):
+            j_index += 1
             continue
           if np.array_equal(rel, image.predicates_labels[i, j]):
             query_gt_classes[0, i_index, 0] = 1

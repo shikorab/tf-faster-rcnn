@@ -52,7 +52,7 @@ def proposal_top_layer(rpn_cls_prob, rpn_bbox_pred, im_info, _feat_stride, ancho
   # batch inds are 0
   batch_inds = np.zeros((proposals.shape[0], 1), dtype=np.float32)
   blob = np.hstack((batch_inds, proposals.astype(np.float32, copy=False)))
-  return blob, scores
+  return blob, scores, anchors
 
 
 def proposal_top_layer_tf(rpn_cls_prob, rpn_bbox_pred, im_info, _feat_stride, anchors, num_anchors):
@@ -82,4 +82,4 @@ def proposal_top_layer_tf(rpn_cls_prob, rpn_bbox_pred, im_info, _feat_stride, an
   proposals = tf.to_float(proposals)
   batch_inds = tf.zeros((rpn_top_n, 1))
   blob = tf.concat([batch_inds, proposals], 1)
-  return blob, top_scores
+  return blob, top_scores, top_anchors

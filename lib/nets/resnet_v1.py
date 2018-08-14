@@ -70,7 +70,7 @@ class resnetv1(Network):
       bboxes = tf.stop_gradient(tf.concat([y1, x1, y2, x2], 1))
       pw_bboxes = tf.stop_gradient(tf.stack([pw_y1, pw_x1, pw_y2, pw_x2], axis=2))
 
-      bottom = resnet_utils.conv2d_same(bottom, 512, 1, 1, scope="bottom_conv")
+      #bottom = resnet_utils.conv2d_same(bottom, 512, 1, 1, scope="bottom_conv")
 
       if cfg.RESNET.MAX_POOL:
         pre_pool_size = cfg.POOLING_SIZE * 2
