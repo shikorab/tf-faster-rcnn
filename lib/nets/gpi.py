@@ -54,7 +54,8 @@ class Gpi(object):
             # Node Neighbours
             self.object_ngbrs = [self.expand_object_features, self.expand_subject_features, relation_features]
             # apply phi
-            self.object_ngbrs_phi = self.nn(features=self.object_ngbrs, layers=[self.nof_node_features, self.nof_node_features], out=self.nof_node_features, scope_name="nn_phi")
+            self.object_ngbrs_phi = self.nn(features=self.object_ngbrs, layers=[self.nof_node_features, self.nof_node_features],
+                                            last_activation=self.activation_fn, out=self.nof_node_features, scope_name="nn_phi")
             # Attention mechanism
             if self.gpi_type == "FeatureAttention":
                 self.object_ngbrs_scores = self.nn(features=self.object_ngbrs, layers=[self.nof_node_features], out=self.nof_node_features,
@@ -77,7 +78,7 @@ class Gpi(object):
             self.object_ngbrs2 = [node_features, self.object_ngbrs_phi_all]
             # apply alpha
             self.object_ngbrs2_alpha = self.nn(features=self.object_ngbrs2, layers=[self.nof_node_features, self.nof_node_features], out=self.nof_node_features,
-                                               scope_name="nn_phi2")
+                                               last_activation=self.activation_fn, scope_name="nn_phi2")
             # Attention mechanism
             if self.gpi_type == "FeatureAttention" or self.gpi_type == "Linguistic":
                 self.object_ngbrs2_scores = self.nn(features=self.object_ngbrs2, layers=[self.nof_node_features], out=self.nof_node_features,
@@ -99,7 +100,7 @@ class Gpi(object):
             ##
             # rho entity (entity prediction)
             # The input is entity features, entity neighbour features and the representation of the graph
-            self.object_all_features = [node_features, expand_graph]
+            self.object_all_features = [node_features, expand_graph, self.object_ngbrs_phi_all]
             obj_delta = self.nn(features=self.object_all_features, layers=self.layers, out=self.nof_node_features, scope_name="nn_obj")
             obj_forget_gate = self.nn(features=self.object_all_features, layers=[], out=self.nof_node_features, scope_name="nn_obj_forgate",
                                       last_activation=tf.nn.sigmoid)

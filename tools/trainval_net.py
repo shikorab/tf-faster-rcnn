@@ -104,18 +104,6 @@ if __name__ == '__main__':
   # train set
   imdb, roidb = combined_roidb(args.imdb_name)
   print('{:d} roidb entries'.format(len(roidb)))
-  #class IMDB(object):
-  #    def __init__(self):
-  #      self.num_classes = 500
-  #      self.name = "vg"
-  #    def __len__(self):
-  #        return 0
-  #
-  #    def __iter__(self):
-  #        return self
-  #
-  #    def next(self):  # Python 3: def __next__(self)
-  #        raise StopIteration
 
   #imdb = IMDB()
   #roidb = IMDB()
@@ -131,8 +119,8 @@ if __name__ == '__main__':
   # also add the validation set, but with no flipping images
   orgflip = cfg.TRAIN.USE_FLIPPED
   cfg.TRAIN.USE_FLIPPED = False
-  #_, valroidb = combined_roidb(args.imdbval_name)
-  valroidb = roidb
+  _, valroidb = combined_roidb(args.imdbval_name)
+  #valroidb = roidb
   print('{:d} validation roidb entries'.format(len(valroidb)))
   cfg.TRAIN.USE_FLIPPED = orgflip
   #valroidb = IMDB()

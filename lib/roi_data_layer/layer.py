@@ -63,14 +63,15 @@ class RoIDataLayer(object):
 
   def _get_next_minibatch_inds(self):
     """Return the roidb indices for the next minibatch."""
-    
+    new_epoch = False
+
     if self._cur + cfg.TRAIN.IMS_PER_BATCH >= len(self._roidb):
       self._shuffle_roidb_inds()
-
+      new_epoch = True
     db_inds = self._perm[self._cur:self._cur + cfg.TRAIN.IMS_PER_BATCH]
     self._cur += cfg.TRAIN.IMS_PER_BATCH
 
-    return db_inds
+    return db_inds, new_epoch
 
   def _get_next_minibatch(self):
     """Return the blobs to be used for the next minibatch.
@@ -78,11 +79,11 @@ class RoIDataLayer(object):
     If cfg.TRAIN.USE_PREFETCH is True, then blobs will be computed in a
     separate process and made available through self._blob_queue.
     """
-    db_inds = self._get_next_minibatch_inds()
+    db_inds, new_epoch = self._get_next_minibatch_inds()
     minibatch_db = [self._roidb[i] for i in db_inds]
-    return get_minibatch(minibatch_db, self._num_classes)
+    return get_minibatch(minibatch_db, self._num_classes), new_epoch
       
   def forward(self):
     """Get blobs and copy them into this layer's top blob vector."""
-    blobs = self._get_next_minibatch()
-    return blobs
+    blobs, new_epoch = self._get_next_minibatch()
+    return blobs, new_epoch

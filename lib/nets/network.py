@@ -539,18 +539,31 @@ class Network(object):
   def train_step(self, sess, blobs, train_op):
     feed_dict = {self._image: blobs['data'], self._im_info: blobs['im_info'],
                  self._gt_boxes: blobs['gt_boxes'], self._gt_labels: blobs['gt_labels'], self._query: blobs['query']}
-    rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss, pred, pred_prob, pred_bbox, bbox_pred, rois, _ = sess.run([self._losses["rpn_cross_entropy"],
-                                                                        self._losses['rpn_loss_box'],
-                                                                        self._losses['cross_entropy'],
-                                                                        self._losses['loss_box'],
-                                                                        self._losses['total_loss'],
-                                                                        self._predictions["cls_pred"],
-                                                                        self._predictions["cls_prob"],
-                                                                        self._predictions['pred_bbox'],
-                                                                        self._predictions['bbox_pred'],
-                                                                        self._predictions['rois'],
-                                                                        train_op],
-                                                                       feed_dict=feed_dict)
+    if train_op != None:
+      rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss, pred, pred_prob, pred_bbox, bbox_pred, rois, _ = sess.run([self._losses["rpn_cross_entropy"],
+                                                                          self._losses['rpn_loss_box'],
+                                                                          self._losses['cross_entropy'],
+                                                                          self._losses['loss_box'],
+                                                                          self._losses['total_loss'],
+                                                                          self._predictions["cls_pred"],
+                                                                          self._predictions["cls_prob"],
+                                                                          self._predictions['pred_bbox'],
+                                                                          self._predictions['bbox_pred'],
+                                                                          self._predictions['rois'],
+                                                                          train_op], feed_dict=feed_dict)
+    else:
+      rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss, pred, pred_prob, pred_bbox, bbox_pred, rois = sess.run(
+        [self._losses["rpn_cross_entropy"],
+         self._losses['rpn_loss_box'],
+         self._losses['cross_entropy'],
+         self._losses['loss_box'],
+         self._losses['total_loss'],
+         self._predictions["cls_pred"],
+         self._predictions["cls_prob"],
+         self._predictions['pred_bbox'],
+         self._predictions['bbox_pred'],
+         self._predictions['rois']], feed_dict=feed_dict)
+
     return rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss, pred, pred_prob, pred_bbox, bbox_pred, rois
 
   def train_step_with_summary(self, sess, blobs, train_op):

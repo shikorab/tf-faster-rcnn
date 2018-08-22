@@ -261,6 +261,7 @@ class vg(imdb):
     file_path = os.path.join(self._data_path, self._image_set + ".p")
     file_handle = open(file_path, "rb")
     images = cPickle.load(file_handle)
+    #images = []
     file_handle.close()
     print("done loading data " + self._image_set)
     return images
