@@ -369,10 +369,17 @@ class SolverWrapper(object):
                 box_deltas = bbox_pred * np.array(cfg.TRAIN.BBOX_NORMALIZE_STDS) + np.array(cfg.TRAIN.BBOX_NORMALIZE_MEANS)
                 pred_boxes = bbox_transform_inv(boxes, box_deltas)
                 pred_boxes = _clip_boxes(pred_boxes, im)
-                pred_boxes /= 600.0
-                # pred_boxes = pred_bbox
+                pred_boxes[:, 0] /= im[1]
+                pred_boxes[:, 1] /= im[0]
+                pred_boxes[:, 2] /= im[1]
+                pred_boxes[:, 3] /= im[0]
+                gt_bbox_norm = gt_bbox.copy()
+                gt_bbox_norm[:, 0] /= im[1]
+                gt_bbox_norm[:, 1] /= im[0]
+                gt_bbox_norm[:, 2] /= im[1]
+                gt_bbox_norm[:, 3] /= im[0]
                 for query_index in range(gt.shape[0]):
-                    results = iou_test(gt[query_index], gt_bbox, pred[query_index], pred_prob[query_index], pred_boxes,
+                    results = iou_test(gt[query_index], gt_bbox_norm, pred[query_index], pred_prob[query_index], pred_boxes,
                                        blobs['im_info'])
                     # accumulate results
                     if accum_results is None:
@@ -463,7 +470,7 @@ def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
         print('done solving')
 
 
-MASK_SHAPE = (32, 32)
+MASK_WIDTH = 32
 
 
 def iou_test(gt, gt_bbox, pred, pred_prob, pred_bbox, im_info):
@@ -473,7 +480,9 @@ def iou_test(gt, gt_bbox, pred, pred_prob, pred_bbox, im_info):
 
     results["sub_iou"] = 0.0
     results["obj_iou"] = 0.0
-
+    width = MASK_WIDTH
+    height = int(np.ceil(float(MASK_WIDTH) / im_info[1] * im_info[0]))
+    MASK_SHAPE = (width, height) 
     mask_sub_gt = np.zeros(MASK_SHAPE, dtype=bool)
     mask_obj_gt = np.zeros(MASK_SHAPE, dtype=bool)
     mask_sub_pred = np.zeros(MASK_SHAPE, dtype=bool)
@@ -491,14 +500,14 @@ def iou_test(gt, gt_bbox, pred, pred_prob, pred_bbox, im_info):
     for i in range(gt.shape[0]):
         if gt[i] == 1:
             mask_sub_gt[
-            int(gt_bbox[i][0] / im_info[0] * MASK_SHAPE[0]):int(math.ceil(gt_bbox[i][2] / im_info[0] * MASK_SHAPE[0])),
-            int(gt_bbox[i][1] / im_info[1] * MASK_SHAPE[1]):int(
-                math.ceil(gt_bbox[i][3] / im_info[1] * MASK_SHAPE[1]))] = True
+            int(gt_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(gt_bbox[i][2] * MASK_SHAPE[0])),
+            int(gt_bbox[i][1] * MASK_SHAPE[1]):int(
+                math.ceil(gt_bbox[i][3] * MASK_SHAPE[1]))] = True
         if gt[i] == 2:
             mask_obj_gt[
-            int(gt_bbox[i][0] / im_info[0] * MASK_SHAPE[0]):int(math.ceil(gt_bbox[i][2] / im_info[0] * MASK_SHAPE[0])),
-            int(gt_bbox[i][1] / im_info[1] * MASK_SHAPE[1]):int(
-                math.ceil(gt_bbox[i][3] / im_info[1] * MASK_SHAPE[1]))] = True
+            int(gt_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(gt_bbox[i][2] * MASK_SHAPE[0])),
+            int(gt_bbox[i][1] * MASK_SHAPE[1]):int(
+                math.ceil(gt_bbox[i][3] * MASK_SHAPE[1]))] = True
 
     # predicted mask
     for i in range(pred.shape[0]):

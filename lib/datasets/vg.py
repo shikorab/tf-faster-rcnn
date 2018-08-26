@@ -11,6 +11,7 @@ import sys
 sys.path.append("..")
 sys.path.append("../..")
 
+
 from datasets import models
 sys.modules['Data.VisualGenome.models'] = models
 
@@ -29,7 +30,7 @@ import pickle
 import subprocess
 import uuid
 from model.config import cfg
-
+import cv2
 
 class vg(imdb):
   def __init__(self, image_set, use_diff=False):
@@ -135,12 +136,20 @@ class vg(imdb):
     Load image and bounding boxes info
     """
     image = index
-
+    im_path = self.image_path_from_index(image)
+    im = cv2.imread(im_path)
+    width = im.shape[1]
+    height = im.shape[0]
     num_objs = 0
     for ix, obj in enumerate(image.objects):
-      if image.objects[ix].x < 0 or image.objects[ix].y < 0 or image.objects[ix].x + image.objects[ix].width > 1023 or \
-                              image.objects[ix].y + image.objects[ix].height > 1023:
-        continue
+      if image.objects[ix].x > width - 2 or image.objects[ix].y > height - 2:
+          continue 
+      #if image.objects[ix].x < 0 or image.objects[ix].y < 0 or image.objects[ix].x + image.objects[ix].width > width or \
+      #                        image.objects[ix].y + image.objects[ix].height > height:
+      #  continue
+      assert(image.objects[ix].width > 0)
+      assert(image.objects[ix].height > 0)
+
       num_objs += 1
 
     boxes = np.zeros((num_objs, 4), dtype=np.float32)
@@ -153,10 +162,13 @@ class vg(imdb):
     queries = np.zeros((0, 235), dtype=np.float32)
     # Load object bounding boxes into a data frame.
     index = 0
+    
     for ix, obj in enumerate(image.objects):
-      if image.objects[ix].x < 0 or image.objects[ix].y < 0 or image.objects[ix].x + image.objects[ix].width > 1023 or \
-                              image.objects[ix].y + image.objects[ix].height > 1023:
-        continue
+      if image.objects[ix].x > width - 2 or image.objects[ix].y > height - 2:
+          continue
+      #if image.objects[ix].x < 0 or image.objects[ix].y < 0 or image.objects[ix].x + image.objects[ix].width > width - 1 or \
+      #                        image.objects[ix].y + image.objects[ix].height > height - 1:
+      #  continue
       # Make pixel indexes 0-based
       x1_offset = 0.0#image.objects[ix].width * (-0.1)
       x2_offset = 0.0#image.objects[ix].width * 0.1
@@ -164,10 +176,12 @@ class vg(imdb):
       y2_offset = 0.0#image.objects[ix].height * 0.1
       boxes[index][0] = max((image.objects[ix].x + x1_offset), 0.0)
       boxes[index][1] = max((image.objects[ix].y + y1_offset), 0.0)
-      boxes[index][2] = min((image.objects[ix].x + x2_offset + image.objects[ix].width), 1023.0)
-      boxes[index][3] = min((image.objects[ix].y + y2_offset + image.objects[ix].height), 1023.0)
+      boxes[index][2] = min((image.objects[ix].x + x2_offset + image.objects[ix].width), width - 1)
+      boxes[index][3] = min((image.objects[ix].y + y2_offset + image.objects[ix].height), height - 1)
       seg_areas[index] = (boxes[index][2] - boxes[index][0] + 1.0) * (boxes[index][3] - boxes[index][1] + 1.0)
       index += 1
+    assert (boxes[:, 2] >= boxes[:, 0]).all()
+    assert (boxes[:, 3]	 >= boxes[:, 1]).all()  
     #load gt classes
      
     for query_index in range(image.queries_gt.shape[0]):
@@ -185,16 +199,20 @@ class vg(imdb):
       found = False
       i_index = 0
       for i in range(image.objects_labels.shape[0]):
-        if image.objects[i].x < 0 or image.objects[i].y < 0 or image.objects[i].x + image.objects[i].width > 1023 or \
-                                image.objects[i].y + image.objects[i].height > 1023:
-          continue
+        if image.objects[i].x > width - 2 or image.objects[i].y > height - 2:
+            continue
+        #if image.objects[i].x < 0 or image.objects[i].y < 0 or image.objects[i].x + image.objects[i].width > width - 1 or \
+        #                        image.objects[i].y + image.objects[i].height > height - 1:
+        #  continue
         if not np.array_equal(image.objects_labels[i], sub):
           i_index += 1
           continue
         j_index = 0
         for j in range(image.objects_labels.shape[0]):
-          if image.objects[j].x < 0 or image.objects[j].y < 0  or image.objects[j].x + image.objects[j].width > 1023 or image.objects[j].y + image.objects[j].height > 1023:
-            continue
+          if image.objects[j].x > width - 2 or image.objects[j].y > height - 2:
+              continue
+          #if image.objects[j].x < 0 or image.objects[j].y < 0  or image.objects[j].x + image.objects[j].width > width - 1 or image.objects[j].y + image.objects[j].height > height - 1:
+          #  continue
 
           if not np.array_equal(image.objects_labels[j], obj):
             j_index += 1
