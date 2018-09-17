@@ -147,14 +147,14 @@ class resnetv1(Network):
                                    include_root_block=False,
                                    reuse=reuse,
                                    scope=self._scope + "__new")
-      fc7 = resnet_utils.conv2d_same(fc7, 512, 1, 1, scope="fc7_conv")
+      fc7 = resnet_utils.conv2d_same(fc7, 1024, 1, 1, scope="fc7_conv")
       pw_fc7, _ = resnet_v1.resnet_v1(pw_pool5,
                                    self._blocks[-1:],
                                    global_pool=False,
                                    include_root_block=False,
                                    reuse=reuse,
                                    scope=self._scope + '_pw')
-      pw_fc7 = resnet_utils.conv2d_same(pw_fc7, 512, 1, 1, scope="pw_fc7_conv")
+      pw_fc7 = resnet_utils.conv2d_same(pw_fc7, 1024, 1, 1, scope="pw_fc7_conv")
       # average pooling done by reduce_mean
       fc7 = tf.reduce_mean(fc7, axis=[1, 2])
       pw_fc7 = tf.reduce_mean(pw_fc7, axis=[1, 2])
@@ -192,19 +192,20 @@ class resnetv1(Network):
 
     for v in variables:
       # exclude the first conv layer to swap RGB to BGR
-      if v.name == (self._scope + '/conv1/weights:0'):
-        self._variables_to_fix[v.name] = v
-        continue
+      #if v.name == (self._scope + '/conv1/weights:0'):
+      #  self._variables_to_fix[v.name] = v
+      #  continue
       #if "__new" in v.name:
       #    continue
       if v.name.split(':')[0] in var_keep_dic:
-        print('Variables restored: %s' % v.name)
+        #print('Variables restored: %s' % v.name)
         variables_to_restore.append(v)
       
       
     return variables_to_restore
 
   def fix_variables(self, sess, pretrained_model):
+    return
     print('Fix Resnet V1 layers..')
     with tf.variable_scope('Fix_Resnet_V1') as scope:
       with tf.device("/cpu:0"):

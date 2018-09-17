@@ -71,17 +71,17 @@ def combined_roidb(imdb_names):
     imdb.set_proposal_method(cfg.TRAIN.PROPOSAL_METHOD)
     print('Set proposal method: {:s}'.format(cfg.TRAIN.PROPOSAL_METHOD))
     roidb = get_training_roidb(imdb)
-    return roidb
+    return roidb, imdb
 
-  roidbs = [get_roidb(s) for s in imdb_names.split('+')]
-  roidb = roidbs[0]
-  if len(roidbs) > 1:
-    for r in roidbs[1:]:
-      roidb.extend(r)
-    tmp = get_imdb(imdb_names.split('+')[1])
-    imdb = datasets.imdb.imdb(imdb_names, tmp.classes)
-  else:
-    imdb = get_imdb(imdb_names)
+  #roidbs = [get_roidb(s) for s in imdb_names.split('+')]
+  roidb, imdb = get_roidb(imdb_names)
+  #if len(roidbs) > 1:
+  #  for r in roidbs[1:]:
+  #    roidb.extend(r)
+  #  tmp = get_imdb(imdb_names.split('+')[1])
+  #  imdb = datasets.imdb.imdb(imdb_names, tmp.classes)
+  #else:
+  #  imdb = get_imdb(imdb_names)
   return imdb, roidb
 
 
@@ -100,6 +100,8 @@ if __name__ == '__main__':
   pprint.pprint(cfg)
 
   np.random.seed(cfg.RNG_SEED)
+  
+  net = resnetv1(num_layers=101)
 
   # train set
   imdb, roidb = combined_roidb(args.imdb_name)
@@ -126,7 +128,7 @@ if __name__ == '__main__':
   #valroidb = IMDB()
   #valroidb.name = "vg"
 
-  net = resnetv1(num_layers=101)
+  
 
   train_net(net, imdb, roidb, valroidb, output_dir, tb_dir,
             pretrained_model=args.weight,

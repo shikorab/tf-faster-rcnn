@@ -14,13 +14,13 @@ class Gpi(object):
         self.reuse = False
         pred_node_features = node_features
         for step in range(self.nof_rnn_steps):
-            pred_node_features, graph_features = \
+            pred_node_features, graph_features, ent_score, rel_score, ent_score0, rel_score0 = \
                 self.gpi_step(relation_features=relation_features,
                          node_features=pred_node_features,
                          scope="gpi")
             self.reuse = True
 
-        return pred_node_features #;tf.concat((node_features, pred_node_features), axis=1)
+        return pred_node_features, ent_score, rel_score, ent_score0, rel_score0 #;tf.concat((node_features, pred_node_features), axis=1)
 
     def nn(self, features, layers, out, scope_name, last_activation=None):
         with tf.variable_scope(scope_name):
@@ -95,15 +95,31 @@ class Gpi(object):
             else:
                 self.object_ngbrs2_alpha_all = tf.reduce_sum(self.object_ngbrs2_alpha, axis=0) / tf.constant(64.0)
 
-            expand_graph_shape = tf.concat((N, tf.shape(self.object_ngbrs2_alpha_all)), 0)
+            expand_graph_shape = tf.concat((N, N, tf.shape(self.object_ngbrs2_alpha_all)), 0)
             expand_graph = tf.add(tf.zeros(expand_graph_shape), self.object_ngbrs2_alpha_all)
             ##
             # rho entity (entity prediction)
             # The input is entity features, entity neighbour features and the representation of the graph
-            self.object_all_features = [node_features, expand_graph, self.object_ngbrs_phi_all]
+            self.object_all_features = [node_features, expand_graph[0], self.object_ngbrs_phi_all]
             obj_delta = self.nn(features=self.object_all_features, layers=self.layers, out=self.nof_node_features, scope_name="nn_obj")
             obj_forget_gate = self.nn(features=self.object_all_features, layers=[], out=self.nof_node_features, scope_name="nn_obj_forgate",
                                       last_activation=tf.nn.sigmoid)
-            pred_node_features = obj_delta  + obj_forget_gate * node_features
+            pred_node_features = obj_delta + obj_forget_gate * node_features
 
-            return pred_node_features, expand_graph
+            ##
+            # relation score
+            self.relation_all_features = [self.expand_object_features, self.expand_subject_features, relation_features, expand_graph]
+            rel_score = self.nn(features=self.relation_all_features, layers=self.layers, out=43, scope_name="ent_score")
+            ##
+            # entity score
+            ent_score = self.nn(features=[pred_node_features], layers=[], out=96, scope_name="rel_score")
+            
+            ##
+            # relation score
+            self.relation_all_features = [relation_features]
+            rel_score0 = self.nn(features=self.relation_all_features, layers=self.layers, out=43, scope_name="ent_score0")
+            ##
+            # entity score
+            ent_score0 = self.nn(features=[node_features], layers=[], out=96, scope_name="rel_score0")
+            
+            return pred_node_features, expand_graph, ent_score, rel_score, ent_score0, rel_score0

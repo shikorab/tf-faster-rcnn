@@ -48,6 +48,9 @@ def get_minibatch(roidb, num_classes):
   blobs['gt_boxes'] = gt_boxes
   blobs['gt_labels'] = roidb[0]['gt_classes']
   blobs['query'] = roidb[0]['query']
+  blobs['orig_image'] = roidb[0]['orig_image']
+  blobs['partial_entity_class'] = roidb[0]['partial_entity_class']
+  blobs['partial_relation_class'] = roidb[0]['partial_relation_class']
   blobs['im_info'] = np.array(
     [im_blob.shape[1], im_blob.shape[2], im_scales[0]],
     dtype=np.float32)

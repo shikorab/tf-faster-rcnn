@@ -74,7 +74,12 @@ def proposal_layer_tf(rpn_cls_prob, rpn_bbox_pred, im_info, cfg_key, _feat_strid
   boxes = tf.gather(proposals, indices)
   boxes = tf.to_float(boxes)
   scores = tf.gather(scores, indices)
+  indices = tf.where(scores >= tf.minimum(0.8, tf.reduce_max(scores) - 0.01))
+  indices = tf.reshape(indices, shape=(-1,))
+  boxes = tf.gather(boxes, indices)
+  scores = tf.gather(scores, indices)
   scores = tf.reshape(scores, shape=(-1, 1))
+  
 
   # Only support single image as input
   batch_inds = tf.zeros((tf.shape(indices)[0], 1), dtype=tf.float32)

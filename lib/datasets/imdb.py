@@ -103,8 +103,7 @@ class imdb(object):
     raise NotImplementedError
 
   def _get_widths(self):
-    return [PIL.Image.open(self.image_path_at(i)).size[0]
-            for i in range(self.num_images)]
+    raise NotImplementedError
 
   def append_flipped_images(self):
     num_images = self.num_images
@@ -120,6 +119,9 @@ class imdb(object):
                'gt_overlaps': self.roidb[i]['gt_overlaps'],
                'gt_classes': self.roidb[i]['gt_classes'],
                'query': self.roidb[i]['query'],
+               'partial_entity_class': self.roidb[i]['partial_entity_class'],
+               'partial_relation_class': self.roidb[i]['partial_relation_class'],
+               'orig_image': self.roidb[i]['orig_image'],
                'flipped': True}
       self.roidb.append(entry)
     self._image_index = self._image_index * 2

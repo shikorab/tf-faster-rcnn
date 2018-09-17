@@ -26,6 +26,7 @@ import math
 import tensorflow as tf
 from tensorflow.python import pywrap_tensorflow
 from model.bbox_transform import clip_boxes, bbox_transform_inv
+from utils.cython_bbox import bbox_overlaps
 
 
 def _clip_boxes(boxes, im_shape):
@@ -164,34 +165,27 @@ class SolverWrapper(object):
             else:
                 train_op = self.optimizer.apply_gradients(gvs)
 
-            # We will handle the snapshots ourselves
-            variables = tf.global_variables()
-            var_keep_dic = self.get_variables_in_checkpoint_file(self.pretrained_model)
-            variables_to_restore = self.net.get_variables_to_restore(variables, var_keep_dic)
-
-            self.saver = tf.train.Saver(variables_to_restore, max_to_keep=100000, reshape=True)
             # Write the train and validation information to tensorboard
             self.writer = tf.summary.FileWriter(self.tbdir, sess.graph)
             self.valwriter = tf.summary.FileWriter(self.tbvaldir)
 
         return lr, train_op
 
-    def find_previous(self):
-        sfiles = os.path.join(self.output_dir, cfg.TRAIN.SNAPSHOT_PREFIX + '_iter_*.ckpt.meta')
+    def find_previous(self, max_iters):
+        sfiles = os.path.join(self.output_dir, cfg.TRAIN.SNAPSHOT_LOAD_PREFIX + '_iter_*.ckpt.meta')
         sfiles = glob.glob(sfiles)
         sfiles.sort(key=os.path.getmtime)
         # Get the snapshot name in TensorFlow
         redfiles = []
-        for stepsize in cfg.TRAIN.STEPSIZE:
-            redfiles.append(os.path.join(self.output_dir,
-                                         cfg.TRAIN.SNAPSHOT_PREFIX + '_iter_{:d}.ckpt.meta'.format(stepsize + 1)))
-        sfiles = [ss.replace('.meta', '') for ss in sfiles if ss not in redfiles]
+        for stepsize in range(0, max_iters, cfg.TRAIN.SNAPSHOT_ITERS):
+            redfiles.append(os.path.join(self.output_dir, cfg.TRAIN.SNAPSHOT_LOAD_PREFIX + '_iter_{:d}.ckpt.meta'.format(stepsize)))
+        sfiles = [ss.replace('.meta', '') for ss in sfiles if ss in redfiles]
 
-        nfiles = os.path.join(self.output_dir, cfg.TRAIN.SNAPSHOT_PREFIX + '_iter_*.pkl')
+        nfiles = os.path.join(self.output_dir, cfg.TRAIN.SNAPSHOT_LOAD_PREFIX + '_iter_*.pkl')
         nfiles = glob.glob(nfiles)
         nfiles.sort(key=os.path.getmtime)
         redfiles = [redfile.replace('.ckpt.meta', '.pkl') for redfile in redfiles]
-        nfiles = [nn for nn in nfiles if nn not in redfiles]
+        nfiles = [nn for nn in nfiles if nn in redfiles]
 
         lsf = len(sfiles)
         assert len(nfiles) == lsf
@@ -232,14 +226,16 @@ class SolverWrapper(object):
         ss_paths = [sfile]
         # Restore model from snapshots
         last_snapshot_iter = self.from_snapshot(sess, sfile, nfile)
+        self.net.fix_variables(sess, sfile)
+        print('Fixed.')
         # Set the learning rate
         rate = cfg.TRAIN.LEARNING_RATE
-        stepsizes = []
-        for stepsize in cfg.TRAIN.STEPSIZE:
-            if last_snapshot_iter > stepsize:
-                rate *= cfg.TRAIN.GAMMA
-            else:
-                stepsizes.append(stepsize)
+        stepsizes = cfg.TRAIN.STEPSIZE
+        #for stepsize in cfg.TRAIN.STEPSIZE:
+        #    if last_snapshot_iter > stepsize:
+        #        rate *= cfg.TRAIN.GAMMA
+        #    else:
+        #       stepsizes.append(stepsize)
 
         return rate, last_snapshot_iter, stepsizes, np_paths, ss_paths
 
@@ -273,16 +269,29 @@ class SolverWrapper(object):
         lr, train_op = self.construct_graph(sess)
 
         # Find previous snapshots if there is any to restore from
-        lsf, nfiles, sfiles = self.find_previous()
+        lsf, nfiles, sfiles = self.find_previous(max_iters)
 
         # Initialize the variables or restore them from the last snapshot
         if lsf == 0:
+            variables = tf.global_variables()
+            var_keep_dic = self.get_variables_in_checkpoint_file(self.pretrained_model)
+            variables_to_restore = self.net.get_variables_to_restore(variables, var_keep_dic)
+            
+            self.saver = tf.train.Saver(variables_to_restore, max_to_keep=100000, reshape=True)
+            
             rate, last_snapshot_iter, stepsizes, np_paths, ss_paths = self.initialize(sess)
         else:
+            variables = tf.global_variables()
+            var_keep_dic = self.get_variables_in_checkpoint_file(sfiles[-1])
+            variables_to_restore = self.net.get_variables_to_restore(variables, var_keep_dic)
+            #variables_to_restore = var_keep_dic
+            self.saver = tf.train.Saver(variables_to_restore, max_to_keep=100000, reshape=True)
+            
             rate, last_snapshot_iter, stepsizes, np_paths, ss_paths = self.restore(sess,
                                                                                    str(sfiles[-1]),
-                                                                                   str(nfiles[-1]))
-        iter = last_snapshot_iter + 1
+                                                                                  str(nfiles[-1]))
+        self.saver = tf.train.Saver(max_to_keep=100000, reshape=True) 
+        iter = 1
         # Make sure the lists are not empty
         stepsizes.append(max_iters)
         stepsizes.reverse()
@@ -328,6 +337,11 @@ class SolverWrapper(object):
         epoch_loss_cls = 0.0
         epoch_loss_box = 0.0
         epoch_iter = 0.0
+        epoch_rpn_overlaps = 0.0
+        epoch_ent = 0.0
+        epoch_rel = 0.0
+        epoch_ent_accuracy = 0.0
+        epoch_rel_accuracy = 0.0
         accum_results = None
 
         timer = Timer()
@@ -341,12 +355,11 @@ class SolverWrapper(object):
                 sub_iou = float(accum_results['sub_iou']) / accum_results['total']
                 obj_iou = float(accum_results['obj_iou']) / accum_results['total']
 
-                print('%s: epoch %d iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
-                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> lr: %f' % \
-                      (name, epoch, int(epoch_iter), epoch_total_loss / epoch_iter, epoch_rpn_loss_cls / epoch_iter,
-                       epoch_rpn_loss_box / epoch_iter, epoch_loss_cls / epoch_iter, epoch_loss_box / epoch_iter,
-                       lr.eval()))
-                print('sub_iou: {} obj_iou {}'.format(sub_iou, obj_iou))
+                print('%s (%s): epoch %d iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
+                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f \n >>> lr: %f' % \
+                      (name, cfg.TRAIN.SNAPSHOT_PREFIX, epoch, int(epoch_iter), epoch_total_loss / epoch_iter, epoch_rpn_loss_cls / epoch_iter,
+                       epoch_rpn_loss_box / epoch_iter, epoch_loss_cls / epoch_iter, epoch_loss_box / epoch_iter, epoch_ent / epoch_iter, epoch_rel / epoch_iter, epoch_ent_accuracy / epoch_iter, epoch_rel_accuracy / epoch_iter, lr.eval()))
+                print('sub_iou: {} obj_iou {} rpn_overlaps {}'.format(sub_iou, obj_iou, epoch_rpn_overlaps / epoch_iter))
                 return
 	    
             if blobs["query"].shape[0] == 0 or blobs["gt_boxes"].shape[0] == 0:
@@ -354,8 +367,7 @@ class SolverWrapper(object):
 
             # Compute the graph without summary
             try:
-                rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, total_loss, pred, pred_prob, pred_bbox, bbox_pred, rois = \
-                    self.net.train_step(sess, blobs, train_op)
+                rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, total_loss, pred, pred_prob, pred_bbox, bbox_pred, ent, rel, rois = self.net.train_step(sess, blobs, train_op)
                 if math.isnan(total_loss):
                     print("total loss is nan - iter %d" % (int(epoch_iter)))
                     continue
@@ -363,21 +375,25 @@ class SolverWrapper(object):
                 gt_bbox = blobs['gt_boxes']
                 gt = blobs['gt_labels'][:, :, 0]
                 im = blobs["im_info"]
+                gt_ent = blobs['partial_entity_class']
+                gt_rel = blobs['partial_relation_class']
                 boxes = rois[:, 1:5]
                 bbox_pred = np.reshape(bbox_pred, [bbox_pred.shape[0], -1])
                 # Apply bounding-box regression deltas
-                box_deltas = bbox_pred * np.array(cfg.TRAIN.BBOX_NORMALIZE_STDS) + np.array(cfg.TRAIN.BBOX_NORMALIZE_MEANS)
-                pred_boxes = bbox_transform_inv(boxes, box_deltas)
-                pred_boxes = _clip_boxes(pred_boxes, im)
-                pred_boxes[:, 0] /= im[1]
-                pred_boxes[:, 1] /= im[0]
-                pred_boxes[:, 2] /= im[1]
-                pred_boxes[:, 3] /= im[0]
+                #box_deltas = bbox_pred * np.array(cfg.TRAIN.BBOX_NORMALIZE_STDS) + np.array(cfg.TRAIN.BBOX_NORMALIZE_MEANS)
+                #pred_boxes = bbox_transform_inv(boxes, box_deltas)
+                #pred_boxes = _clip_boxes(pred_boxes, im)
+                #pred_boxes[:, 0] /= im[1]
+                #pred_boxes[:, 1] /= im[0]
+                #pred_boxes[:, 2] /= im[1]
+                #pred_boxes[:, 3] /= im[0]
+                pred_boxes = pred_bbox
                 gt_bbox_norm = gt_bbox.copy()
                 gt_bbox_norm[:, 0] /= im[1]
                 gt_bbox_norm[:, 1] /= im[0]
                 gt_bbox_norm[:, 2] /= im[1]
                 gt_bbox_norm[:, 3] /= im[0]
+                rpn_overlaps, ent_accuracy, rel_accuracy = rpn_test(gt_bbox_norm, gt_ent, pred_boxes, ent, gt_rel, rel)
                 for query_index in range(gt.shape[0]):
                     results = iou_test(gt[query_index], gt_bbox_norm, pred[query_index], pred_prob[query_index], pred_boxes,
                                        blobs['im_info'])
@@ -393,6 +409,11 @@ class SolverWrapper(object):
                 epoch_loss_cls += loss_cls
                 epoch_rpn_loss_cls += rpn_loss_cls
                 epoch_total_loss += total_loss
+                epoch_rpn_overlaps += rpn_overlaps
+                epoch_ent_accuracy += ent_accuracy
+                epoch_rel_accuracy += rel_accuracy
+                epoch_ent += loss_ent
+                epoch_rel += loss_rel
 
             except Exception as e:
                 print(e)
@@ -406,11 +427,11 @@ class SolverWrapper(object):
                 sub_iou = float(accum_results['sub_iou']) / accum_results['total']
                 obj_iou = float(accum_results['obj_iou']) / accum_results['total']
 
-                print('iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
-                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> lr: %f' % \
-                      (int(epoch_iter), total_loss, rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, lr.eval()))
+                print('%s iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
+                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f\n >>> lr: %f' % \
+                      (cfg.TRAIN.SNAPSHOT_PREFIX, int(epoch_iter), total_loss, rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, ent_accuracy, rel_accuracy, lr.eval()))
                 print('speed: {:.3f}s / iter'.format(timer.average_time))
-                print('sub_iou: {} obj_iou {}'.format(sub_iou, obj_iou))
+                print('sub_iou: {} obj_iou {} rpn_overlaps {}'.format(sub_iou, obj_iou, epoch_rpn_overlaps / epoch_iter))
 
 
 def get_training_roidb(imdb):
@@ -471,7 +492,23 @@ def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
 
 
 MASK_WIDTH = 32
+def softmax(x):
+    xexp = np.exp(x)
+    return xexp / np.sum(xexp, axis=-1, keepdims=1)
+    
 
+def rpn_test(gt_bbox, gt_ent, pred_bbox, pred_ent, gt_rel, pred_rel):
+    overlaps = bbox_overlaps(np.ascontiguousarray(gt_bbox, dtype=np.float), np.ascontiguousarray(pred_bbox, dtype=np.float))
+    overlaps_assign = np.argmax(overlaps, axis=1)
+    max_overlaps = overlaps.max(axis=1)
+
+    pred_ent = softmax(pred_ent[overlaps_assign])
+    ent_accuracy = np.sum(np.multiply(pred_ent, gt_ent)) / np.sum(gt_ent)
+    
+    pred_rel = softmax(pred_rel[overlaps_assign,:][:,overlaps_assign])
+    rel_accuracy = np.sum(np.multiply(pred_rel[:,:,:-1], gt_rel[:,:,:-1])) / np.sum(gt_rel[:,:,:-1])
+    
+    return np.mean(max_overlaps), ent_accuracy, rel_accuracy
 
 def iou_test(gt, gt_bbox, pred, pred_prob, pred_bbox, im_info):
     results = {}

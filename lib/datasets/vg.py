@@ -81,6 +81,8 @@ class vg(imdb):
       'Path does not exist: {}'.format(image_path)
     return image_path
 
+  def _get_widths(self):
+    return [self._image_index[i].image.width for i in range(self.num_images)]
 
   def _get_default_path(self):
     """
@@ -106,20 +108,14 @@ class vg(imdb):
 
     gt_roidb = [self._load_pascal_annotation(index)
                 for index in self.image_index]
-    with open(cache_file, 'wb') as fid:
-      pickle.dump(gt_roidb, fid, pickle.HIGHEST_PROTOCOL)
-    print('wrote gt roidb to {}'.format(cache_file))
+    #with open(cache_file, 'wb') as fid:
+    #  pickle.dump(gt_roidb, fid, pickle.HIGHEST_PROTOCOL)
+    #print('wrote gt roidb to {}'.format(cache_file))
 
     return gt_roidb
 
   def rpn_roidb(self):
-    if int(self._year) == 2007 or self._image_set != 'test':
-      gt_roidb = self.gt_roidb()
-      rpn_roidb = self._load_rpn_roidb(gt_roidb)
-      roidb = imdb.merge_roidbs(gt_roidb, rpn_roidb)
-    else:
-      roidb = self._load_rpn_roidb(None)
-
+    roidb = self.gt_roidb()
     return roidb
 
   def _load_rpn_roidb(self, gt_roidb):
@@ -154,7 +150,8 @@ class vg(imdb):
 
     boxes = np.zeros((num_objs, 4), dtype=np.float32)
 
-
+    partial_entity_class = np.zeros((num_objs, 96), dtype=np.int32)
+    partial_relation_class = np.zeros((num_objs, num_objs, 43), dtype=np.int32)
     gt_classes = np.zeros((0, num_objs, 1), dtype=np.int32)
     overlaps = np.zeros((0, num_objs, self.num_classes), dtype=np.int64)
     # "Seg" area for pascal is just the box area
@@ -183,7 +180,21 @@ class vg(imdb):
     assert (boxes[:, 2] >= boxes[:, 0]).all()
     assert (boxes[:, 3]	 >= boxes[:, 1]).all()  
     #load gt classes
-     
+    
+    i_index = 0
+    for i in range(image.objects_labels.shape[0]):
+        if image.objects[i].x > width - 2 or image.objects[i].y > height - 2:
+            continue
+        partial_entity_class[i_index] = image.objects_labels[i]
+            
+        j_index = 0
+        for j in range(image.objects_labels.shape[0]):
+            if image.objects[j].x > width - 2 or image.objects[j].y > height - 2:
+                continue
+            partial_relation_class[i_index, j_index] = image.predicates_labels[i, j]
+            j_index += 1
+        i_index += 1
+        
     for query_index in range(image.queries_gt.shape[0]):
       query_gt_classes = np.zeros((1, num_objs, 1), dtype=np.int32)
       query_overlaps = np.zeros((1, num_objs, self.num_classes), dtype=np.int64)
@@ -210,7 +221,7 @@ class vg(imdb):
         j_index = 0
         for j in range(image.objects_labels.shape[0]):
           if image.objects[j].x > width - 2 or image.objects[j].y > height - 2:
-              continue
+              continue  
           #if image.objects[j].x < 0 or image.objects[j].y < 0  or image.objects[j].x + image.objects[j].width > width - 1 or image.objects[j].y + image.objects[j].height > height - 1:
           #  continue
 
@@ -224,6 +235,10 @@ class vg(imdb):
             query_gt_classes[0, j_index, 0] = 2
             query_overlaps[0, j_index, 2] = 1
             query_overlaps[0, j_index, 3] = 0
+            #partial_entity_class[i_index] = sub
+            #partial_entity_class[j_index] = obj
+            #partial_relation_class[i_index, j_index] = rel
+            
             found = True
           j_index += 1
         i_index += 1
@@ -238,7 +253,10 @@ class vg(imdb):
             'gt_overlaps': overlaps,
             'flipped': False,
             'seg_areas': seg_areas,
-             'query' : queries}
+            'query' : queries,
+            'partial_entity_class' : partial_entity_class,
+            'partial_relation_class' : partial_relation_class,
+            'orig_image': None}
 
   def _get_comp_id(self):
     comp_id = (self._comp_id + '_' + self._salt if self.config['use_salt']
