@@ -32,7 +32,7 @@ case ${DATASET} in
     RATIOS="[0.5,1,2]"
     ;;
   visual_genome)
-    TRAIN_IMDB="visual_genome_train"
+    TRAIN_IMDB="visual_genome_test"
     TEST_IMDB="visual_genome_test"
     STEPSIZE="[4,8,16,20,24,28]"
     ITERS=200

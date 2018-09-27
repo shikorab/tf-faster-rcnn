@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 class Gpi(object):
-    def __init__(self, nof_node_features=1028, nof_relation_features=1028, rnn_steps=1, layers = [1028, 1028], gpi_type="FeatureAttention"):
+    def __init__(self, nof_node_features=516, nof_relation_features=516, rnn_steps=1, layers = [516, 516], gpi_type="FeatureAttention"):
         self.nof_node_features = nof_node_features
         self.nof_relation_features = nof_relation_features
         self.nof_rnn_steps = rnn_steps
@@ -10,13 +10,14 @@ class Gpi(object):
         self.activation_fn = tf.nn.relu
         self.reuse = None
 
-    def predict(self, node_features, relation_features):
+    def predict(self, node_features, relation_features, gt_node_features, gt_relation_features):
         self.reuse = False
         pred_node_features = node_features
         for step in range(self.nof_rnn_steps):
             pred_node_features, graph_features, ent_score, rel_score, ent_score0, rel_score0 = \
                 self.gpi_step(relation_features=relation_features,
                          node_features=pred_node_features,
+                         gt_node_features=gt_node_features, gt_relation_features=gt_relation_features,
                          scope="gpi")
             self.reuse = True
 
@@ -38,10 +39,9 @@ class Gpi(object):
             y = tf.contrib.layers.fully_connected(h, out, reuse=self.reuse, scope=scope, activation_fn=last_activation)
         return y
 
-    def gpi_step(self, node_features, relation_features, scope):
+    def gpi_step(self, node_features, relation_features, gt_node_features, gt_relation_features, scope):
         with tf.variable_scope(scope):
 
-            # expand object word embed
             N = tf.slice(tf.shape(relation_features), [0], [1], name="N")
 
             # expand object confidence
@@ -102,24 +102,31 @@ class Gpi(object):
             # The input is entity features, entity neighbour features and the representation of the graph
             self.object_all_features = [node_features, expand_graph[0], self.object_ngbrs_phi_all]
             obj_delta = self.nn(features=self.object_all_features, layers=self.layers, out=self.nof_node_features, scope_name="nn_obj")
-            obj_forget_gate = self.nn(features=self.object_all_features, layers=[], out=self.nof_node_features, scope_name="nn_obj_forgate",
-                                      last_activation=tf.nn.sigmoid)
+            obj_forget_gate = self.nn(features=self.object_all_features, layers=self.layers, out=self.nof_node_features, scope_name="nn_obj_forgate", last_activation=tf.nn.sigmoid)
             pred_node_features = obj_delta + obj_forget_gate * node_features
 
             ##
             # relation score
             self.relation_all_features = [self.expand_object_features, self.expand_subject_features, relation_features, expand_graph]
-            rel_score = self.nn(features=self.relation_all_features, layers=self.layers, out=43, scope_name="ent_score")
+            rel_score = self.nn(features=self.relation_all_features, layers=[512], out=43, scope_name="ent_score")
             ##
             # entity score
-            ent_score = self.nn(features=[pred_node_features], layers=[], out=96, scope_name="rel_score")
+            ent_score = self.nn(features=[pred_node_features], layers=[512], out=96, scope_name="rel_score")
             
             ##
             # relation score
-            self.relation_all_features = [relation_features]
-            rel_score0 = self.nn(features=self.relation_all_features, layers=self.layers, out=43, scope_name="ent_score0")
+            N = tf.slice(tf.shape(gt_relation_features), [0], [1], name="N")
+
+            # expand object confidence
+            self.gt_expand_node_shape = tf.concat((N, tf.shape(gt_node_features)), 0)
+            self.gt_expand_object_features = tf.add(tf.zeros(self.gt_expand_node_shape), gt_node_features)
+            # expand subject confidence
+            self.gt_expand_subject_features = tf.transpose(self.gt_expand_object_features, perm=[1, 0, 2])
+
+            self.relation_all_features = [gt_relation_features, self.gt_expand_object_features, self.gt_expand_subject_features]
+            rel_score0 = self.nn(features=self.relation_all_features, layers=[512], out=43, scope_name="rel_score0")
             ##
             # entity score
-            ent_score0 = self.nn(features=[node_features], layers=[], out=96, scope_name="rel_score0")
+            ent_score0 = self.nn(features=[gt_node_features], layers=[512], out=96, scope_name="ent_score0")
             
             return pred_node_features, expand_graph, ent_score, rel_score, ent_score0, rel_score0

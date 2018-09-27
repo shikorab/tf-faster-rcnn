@@ -95,8 +95,8 @@ class resnetv1(Network):
         #shape = tf.concat((N, tf.shape(crops)), 0)
         #pw_crops = tf.reshape(pw_crops, shape)
 
-    self._predictions['pred_bbox'] = tf.stop_gradient(tf.concat([x1, y1, x2, y2], axis=1))
-    self._predictions['pw_pred_bbox'] = tf.reshape(tf.stop_gradient(tf.concat([pw_x1, pw_y1, pw_x2, pw_y2], axis=1)), [-1, 4])
+    self._predictions['pred_bbox0_'+name] = tf.stop_gradient(tf.concat([x1, y1, x2, y2], axis=1))
+    self._predictions['pw_pred_bbox0_'+name] = tf.reshape(tf.stop_gradient(tf.stack([pw_x1, pw_y1, pw_x2, pw_y2], axis=2)), [-1, 4])
     return crops, pw_crops
 
   # Do the first few layers manually, because 'SAME' padding can behave inconsistently
@@ -139,7 +139,7 @@ class resnetv1(Network):
 
     return net_conv
 
-  def _head_to_tail(self, pool5, pw_pool5, is_training, reuse=None):
+  def _head_to_tail(self, pool5, pw_pool5, is_training, name="", reuse=None):
     with slim.arg_scope(resnet_arg_scope(is_training=is_training)):
       fc7, _ = resnet_v1.resnet_v1(pool5,
                                    self._blocks[-1:],
@@ -147,14 +147,16 @@ class resnetv1(Network):
                                    include_root_block=False,
                                    reuse=reuse,
                                    scope=self._scope + "__new")
-      fc7 = resnet_utils.conv2d_same(fc7, 1024, 1, 1, scope="fc7_conv")
+      #fc7 = resnet_utils.conv2d_same(fc7, 1024, 1, 1, scope="fc7_conv" + name )
+      fc7 = tf.layers.conv2d(fc7, 512, 1, reuse=reuse)
       pw_fc7, _ = resnet_v1.resnet_v1(pw_pool5,
                                    self._blocks[-1:],
                                    global_pool=False,
                                    include_root_block=False,
                                    reuse=reuse,
                                    scope=self._scope + '_pw')
-      pw_fc7 = resnet_utils.conv2d_same(pw_fc7, 1024, 1, 1, scope="pw_fc7_conv")
+      pw_fc7 = tf.layers.conv2d(pw_fc7, 512, 1, reuse=reuse, name="pw")
+      #pw_fc7 = resnet_utils.conv2d_same(pw_fc7, 1024, 1, 1, scope="pw_fc7_conv" + name)
       # average pooling done by reduce_mean
       fc7 = tf.reduce_mean(fc7, axis=[1, 2])
       pw_fc7 = tf.reduce_mean(pw_fc7, axis=[1, 2])

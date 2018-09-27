@@ -56,7 +56,7 @@ def proposal_target_layer(rpn_rois, rpn_scores, gt_boxes, gt_labels, ent_labels,
   return rois, roi_scores, labels, ent_labels, rel_labels, bbox_targets, bbox_inside_weights, bbox_outside_weights, labels_mask
 
 
-def _get_bbox_regression_labels(bbox_target_data, nof_fgs):
+def _get_bbox_regression_labels(bbox_target_data, fg_inds):
   """Bounding-box regression targets (bbox_target_data) are stored in a
   compact form N x (class, tx, ty, tw, th)
 
@@ -79,8 +79,8 @@ def _get_bbox_regression_labels(bbox_target_data, nof_fgs):
   #  bbox_targets[ind, start:end] = bbox_target_data[ind]
   #  bbox_inside_weights[ind, start:end] = cfg.TRAIN.BBOX_INSIDE_WEIGHTS
   bbox_targets = bbox_target_data
-  bbox_inside_weights[:] = cfg.TRAIN.BBOX_INSIDE_WEIGHTS
-  bbox_inside_weights[nof_fgs:, :] = 0
+  bbox_inside_weights[fg_inds] = cfg.TRAIN.BBOX_INSIDE_WEIGHTS
+  #bbox_inside_weights[nof_fgs:, :] = 0
   return bbox_targets, bbox_inside_weights
 
 
@@ -163,6 +163,6 @@ def _sample_rois(all_rois, all_scores, gt_boxes, gt_labels, ent_labels, rel_labe
     rois[:, 1:5], gt_boxes)
 
   bbox_targets, bbox_inside_weights = \
-    _get_bbox_regression_labels(bbox_target_data, int(fg_rois_per_image))
+    _get_bbox_regression_labels(bbox_target_data, fg_inds)
 
   return ent_labels, rel_labels, labels, rois, roi_scores, bbox_targets, bbox_inside_weights, labels_mask #gt_assignment[keep_inds]

@@ -338,10 +338,15 @@ class SolverWrapper(object):
         epoch_loss_box = 0.0
         epoch_iter = 0.0
         epoch_rpn_overlaps = 0.0
+        epoch_rpn_overlaps0 = 0.0
         epoch_ent = 0.0
         epoch_rel = 0.0
         epoch_ent_accuracy = 0.0
         epoch_rel_accuracy = 0.0
+        epoch_ent0 = 0.0
+        epoch_rel0 = 0.0
+        epoch_ent0_accuracy = 0.0
+        epoch_rel0_accuracy = 0.0
         accum_results = None
 
         timer = Timer()
@@ -354,12 +359,19 @@ class SolverWrapper(object):
             if new_epoch:
                 sub_iou = float(accum_results['sub_iou']) / accum_results['total']
                 obj_iou = float(accum_results['obj_iou']) / accum_results['total']
+                acc = float(accum_results['acc']) / accum_results['total']
+                acc0 = float(accum_results['acc0']) / (accum_results['acc0_total'] + 1.0)
+                acc1 = float(accum_results['acc1']) / ((accum_results['acc1_total'] + 1.0)
+                acc2 = float(accum_results['acc2']) / (accum_results['acc2_total'] + 1.0)
+                acc3 = float(accum_results['acc3']) / (accum_results['acc3_total'] + 1.0)
+
 
                 print('%s (%s): epoch %d iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
-                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f \n >>> lr: %f' % \
+                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f\n >>> loss_ent0: %.6f loss_rel0: %.6f ent0_acc: %.6f rel0_acc: %.6f \n >>> lr: %f' % \
                       (name, cfg.TRAIN.SNAPSHOT_PREFIX, epoch, int(epoch_iter), epoch_total_loss / epoch_iter, epoch_rpn_loss_cls / epoch_iter,
-                       epoch_rpn_loss_box / epoch_iter, epoch_loss_cls / epoch_iter, epoch_loss_box / epoch_iter, epoch_ent / epoch_iter, epoch_rel / epoch_iter, epoch_ent_accuracy / epoch_iter, epoch_rel_accuracy / epoch_iter, lr.eval()))
-                print('sub_iou: {} obj_iou {} rpn_overlaps {}'.format(sub_iou, obj_iou, epoch_rpn_overlaps / epoch_iter))
+                       epoch_rpn_loss_box / epoch_iter, epoch_loss_cls / epoch_iter, epoch_loss_box / epoch_iter, epoch_ent / epoch_iter, epoch_rel / epoch_iter, epoch_ent_accuracy / epoch_iter, epoch_rel_accuracy / epoch_iter, epoch_ent0 / epoch_iter, epoch_rel0 / epoch_iter, epoch_ent0_accuracy / epoch_iter, epoch_rel0_accuracy / epoch_iter,lr.eval()))
+                print('sub_iou: {} obj_iou {} rpn_overlaps {} rpn_overlaps0 {}'.format(sub_iou, obj_iou, epoch_rpn_overlaps / epoch_iter, epoch_rpn_overlaps0 / epoch_iter))
+                print('acc: {} acc0: {} acc1: {} acc2: {} acc3: {}'.format(acc, acc0, acc1, acc2, acc3))
                 return
 	    
             if blobs["query"].shape[0] == 0 or blobs["gt_boxes"].shape[0] == 0:
@@ -367,7 +379,7 @@ class SolverWrapper(object):
 
             # Compute the graph without summary
             try:
-                rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, total_loss, pred, pred_prob, pred_bbox, bbox_pred, ent, rel, rois = self.net.train_step(sess, blobs, train_op)
+                rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, loss_ent0, loss_rel0, total_loss, pred_label, pred, pred_prob, pred_boxes0, pred_boxes, ent, rel, ent0, rel0, rois = self.net.train_step(sess, blobs, train_op)
                 if math.isnan(total_loss):
                     print("total loss is nan - iter %d" % (int(epoch_iter)))
                     continue
@@ -378,25 +390,23 @@ class SolverWrapper(object):
                 gt_ent = blobs['partial_entity_class']
                 gt_rel = blobs['partial_relation_class']
                 boxes = rois[:, 1:5]
-                bbox_pred = np.reshape(bbox_pred, [bbox_pred.shape[0], -1])
+                pred_boxes = np.reshape(pred_boxes, [pred_boxes.shape[0], -1])
                 # Apply bounding-box regression deltas
-                #box_deltas = bbox_pred * np.array(cfg.TRAIN.BBOX_NORMALIZE_STDS) + np.array(cfg.TRAIN.BBOX_NORMALIZE_MEANS)
-                #pred_boxes = bbox_transform_inv(boxes, box_deltas)
-                #pred_boxes = _clip_boxes(pred_boxes, im)
-                #pred_boxes[:, 0] /= im[1]
-                #pred_boxes[:, 1] /= im[0]
-                #pred_boxes[:, 2] /= im[1]
-                #pred_boxes[:, 3] /= im[0]
-                pred_boxes = pred_bbox
+                box_deltas = pred_boxes * np.array(cfg.TRAIN.BBOX_NORMALIZE_STDS) + np.array(cfg.TRAIN.BBOX_NORMALIZE_MEANS)
+                pred_boxes = bbox_transform_inv(boxes, box_deltas)
+                pred_boxes = _clip_boxes(pred_boxes, im)
+                pred_boxes[:, 0] /= im[1]
+                pred_boxes[:, 1] /= im[0]
+                pred_boxes[:, 2] /= im[1]
+                pred_boxes[:, 3] /= im[0]
                 gt_bbox_norm = gt_bbox.copy()
                 gt_bbox_norm[:, 0] /= im[1]
                 gt_bbox_norm[:, 1] /= im[0]
                 gt_bbox_norm[:, 2] /= im[1]
                 gt_bbox_norm[:, 3] /= im[0]
-                rpn_overlaps, ent_accuracy, rel_accuracy = rpn_test(gt_bbox_norm, gt_ent, pred_boxes, ent, gt_rel, rel)
+                rpn_overlaps0, rpn_overlaps, ent_accuracy, rel_accuracy, ent0_accuracy, rel0_accuracy = rpn_test(gt_bbox_norm, gt_ent, pred_boxes0, pred_boxes, ent, ent0, gt_rel, rel, rel0)
                 for query_index in range(gt.shape[0]):
-                    results = iou_test(gt[query_index], gt_bbox_norm, pred[query_index], pred_prob[query_index], pred_boxes,
-                                       blobs['im_info'])
+                    results = iou_test(gt[query_index], gt_bbox_norm, pred_label[query_index, :, 0], pred[query_index], pred_prob[query_index], pred_boxes0, blobs['im_info'])
                     # accumulate results
                     if accum_results is None:
                         accum_results = results
@@ -410,10 +420,16 @@ class SolverWrapper(object):
                 epoch_rpn_loss_cls += rpn_loss_cls
                 epoch_total_loss += total_loss
                 epoch_rpn_overlaps += rpn_overlaps
+                epoch_rpn_overlaps0 += rpn_overlaps0 
                 epoch_ent_accuracy += ent_accuracy
                 epoch_rel_accuracy += rel_accuracy
+                epoch_ent0_accuracy += ent0_accuracy
+                epoch_rel0_accuracy += rel0_accuracy
                 epoch_ent += loss_ent
                 epoch_rel += loss_rel
+                epoch_ent0 += loss_ent0
+                epoch_rel0 += loss_rel0
+
 
             except Exception as e:
                 print(e)
@@ -426,12 +442,19 @@ class SolverWrapper(object):
             if epoch == 1 and int(epoch_iter) % (cfg.TRAIN.DISPLAY) == 0:
                 sub_iou = float(accum_results['sub_iou']) / accum_results['total']
                 obj_iou = float(accum_results['obj_iou']) / accum_results['total']
+                acc = float(accum_results['acc']) / accum_results['total']
+                acc0 = float(accum_results['acc0']) / (accum_results['acc0_total'] + 1.0)
+                acc1 = float(accum_results['acc1']) / (accum_results['acc1_total'] + 1.0)
+                acc2 = float(accum_results['acc2']) / (accum_results['acc2_total'] + 1.0)
+                acc3 = float(accum_results['acc3']) / (accum_results['acc3_total'] + 1.0)
+
 
                 print('%s iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
-                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f\n >>> lr: %f' % \
-                      (cfg.TRAIN.SNAPSHOT_PREFIX, int(epoch_iter), total_loss, rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, ent_accuracy, rel_accuracy, lr.eval()))
+                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f\n >>> loss_ent0: %.6f loss_rel0: %.6f ent0_acc: %.6f rel0_acc: %.6f\n >>> lr: %f' % \
+                      (cfg.TRAIN.SNAPSHOT_PREFIX, int(epoch_iter), total_loss, rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, ent_accuracy, rel_accuracy, loss_ent0, loss_rel0, ent0_accuracy, rel0_accuracy, lr.eval()))
                 print('speed: {:.3f}s / iter'.format(timer.average_time))
-                print('sub_iou: {} obj_iou {} rpn_overlaps {}'.format(sub_iou, obj_iou, epoch_rpn_overlaps / epoch_iter))
+                print('sub_iou: {} obj_iou {} rpn_overlaps {} rpn_overlaps0 {}'.format(sub_iou, obj_iou, epoch_rpn_overlaps / epoch_iter, epoch_rpn_overlaps0 / epoch_iter))
+                print('acc: {} acc0: {} acc1: {} acc2: {} acc3: {}'.format(acc, acc0, acc1, acc2, acc3))
 
 
 def get_training_roidb(imdb):
@@ -497,8 +520,12 @@ def softmax(x):
     return xexp / np.sum(xexp, axis=-1, keepdims=1)
     
 
-def rpn_test(gt_bbox, gt_ent, pred_bbox, pred_ent, gt_rel, pred_rel):
-    overlaps = bbox_overlaps(np.ascontiguousarray(gt_bbox, dtype=np.float), np.ascontiguousarray(pred_bbox, dtype=np.float))
+def rpn_test(gt_bbox, gt_ent, pred_boxes0, pred_boxes, pred_ent, pred_ent0, gt_rel, pred_rel, pred_rel0):
+    overlaps0 = bbox_overlaps(np.ascontiguousarray(gt_bbox, dtype=np.float), np.ascontiguousarray(pred_boxes0, dtype=np.float))
+    overlaps0_assign = np.argmax(overlaps0, axis=1)
+    max_overlaps0 = overlaps0.max(axis=1)
+
+    overlaps = bbox_overlaps(np.ascontiguousarray(gt_bbox, dtype=np.float), np.ascontiguousarray(pred_boxes, dtype=np.float))
     overlaps_assign = np.argmax(overlaps, axis=1)
     max_overlaps = overlaps.max(axis=1)
 
@@ -508,15 +535,32 @@ def rpn_test(gt_bbox, gt_ent, pred_bbox, pred_ent, gt_rel, pred_rel):
     pred_rel = softmax(pred_rel[overlaps_assign,:][:,overlaps_assign])
     rel_accuracy = np.sum(np.multiply(pred_rel[:,:,:-1], gt_rel[:,:,:-1])) / np.sum(gt_rel[:,:,:-1])
     
-    return np.mean(max_overlaps), ent_accuracy, rel_accuracy
+    pred_ent0 = softmax(pred_ent0)
+    ent0_accuracy = np.sum(np.multiply(pred_ent0, gt_ent)) / np.sum(gt_ent)
+    
+    pred_rel0 = softmax(pred_rel0)
+    rel0_accuracy = np.sum(np.multiply(pred_rel0[:,:,:-1], gt_rel[:,:,:-1])) / np.sum(gt_rel[:,:,:-1])
+    
+    return np.mean(max_overlaps0), np.mean(max_overlaps), ent_accuracy, rel_accuracy, ent0_accuracy, rel0_accuracy
 
-def iou_test(gt, gt_bbox, pred, pred_prob, pred_bbox, im_info):
+def iou_test(gt, gt_bbox, pred_label, pred, pred_prob, pred_bbox, im_info):
     results = {}
     # number of objects
     results["total"] = 1
 
     results["sub_iou"] = 0.0
     results["obj_iou"] = 0.0
+    results["acc"] = np.sum(pred == pred_label).astype(float)
+    for i in range(4):
+        total = np.sum(pred_label == i).astype(float)
+        if total != 0:
+            results["acc" + str(i)] = np.sum(np.logical_and(pred == pred_label, pred_lable == i).astype(float) / total
+            results["acc" + str(i) + "_total"] = 1.0
+        else:
+            results["acc" + str(i)] = 0.0
+            results["acc" + str(i) + "_total"] = 0.0
+
+ 
     width = MASK_WIDTH
     height = int(np.ceil(float(MASK_WIDTH) / im_info[1] * im_info[0]))
     MASK_SHAPE = (width, height) 
