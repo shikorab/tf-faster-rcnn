@@ -365,7 +365,9 @@ class Network(object):
       self.expand_mask = expand_mask
       label = self._proposal_targets["labels"]
       masked_label = tf.multiply(expand_mask, tf.to_float(label))
-      factor = (1.0 + tf.reduce_sum(tf.to_float(tf.not_equal(masked_label, 1) & tf.not_equal(masked_label, 2)), axis=1)) / (1.0 + tf.reduce_sum(tf.to_float(tf.equal(masked_label, 1) | tf.equal(masked_label, 2)), axis=1))
+      nof_poss = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(masked_label, 1) | tf.equal(masked_label, 2)), axis=1))
+      nof_negs = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(masked_label, 0) | tf.equal(masked_label, 3)), axis=1))
+      factor = 3.0 * tf.to_float(nof_poss) / nof_negs
       self.factor = factor
 
       factor = tf.squeeze(factor)
@@ -374,7 +376,7 @@ class Network(object):
 
       expand_mask_factor = tf.transpose(tf.transpose(expand_mask) * factor)
       
-      expand_mask = tf.where(tf.equal(label, 1) | tf.equal(label, 2), expand_mask_factor, expand_mask)
+      expand_mask = tf.where(tf.equal(label, 0) | tf.equal(label, 3), expand_mask_factor, expand_mask)
       self.expand_mask2 = expand_mask
       expand_mask = tf.reshape(expand_mask, [-1])
       cls_score = tf.reshape(self._predictions["cls_score"], [-1, self._num_classes])
@@ -408,13 +410,25 @@ class Network(object):
       self.ents_for_loss0 = ents_for_loss     
       ent_cross_entropy0 = tf.reduce_sum(tf.multiply(ents_for_loss,  tf.nn.softmax_cross_entropy_with_logits(logits=ent_cls_score0, labels=self._partial_entity_class)))# / nof_ents
       self.ent_cross_entropy0 = ent_cross_entropy0
-      #relation
-      partial_rel_class = tf.reshape(self._partial_relation_class, (-1, 43))[:,:-1]
-      nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class)) + 1.0
-      rels_for_loss = tf.to_float(tf.reduce_sum(partial_rel_class, axis=1))
-      rel_cls_score0 = tf.reshape(rel_cls_score0, (-1, 43))[:,:-1]
-      rel_cross_entropy0 = tf.reduce_sum(tf.multiply(rels_for_loss, tf.nn.softmax_cross_entropy_with_logits(logits=rel_cls_score0, labels=partial_rel_class)))# / nof_rels
       
+      # relation
+      partial_rel_class = tf.reshape(self._partial_relation_class, (-1, 43))
+      rel_cls_score0 = tf.reshape(rel_cls_score0, (-1, 43))
+      rel_ce = tf.nn.softmax_cross_entropy_with_logits(logits=rel_cls_score0, labels=partial_rel_class)
+
+      # positive relation
+      nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1])) + 1.0
+      self.nof_rels = nof_rels
+      rels_for_loss = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1], axis=1))
+      self.rels_for_loss = rels_for_loss
+      rel_cross_entropy0 = tf.reduce_sum(tf.multiply(rels_for_loss, rel_ce))# / nof_rels
+
+      # negative relation
+      nof_neg_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,-1])) + 1.0
+      factor = 3.0 * tf.to_float(nof_rels) / nof_neg_rels
+      neg_rels_for_loss = factor * tf.to_float(partial_rel_class[:,-1])
+      rel_cross_entropy0 += tf.reduce_sum(tf.multiply(neg_rels_for_loss, rel_ce))# / nof_neg_rels
+
       ## partial scene-graph loss - gpi with rpn
       partial_entity_class = self._proposal_targets['partial_entity_class']
       partial_relation_class = self._proposal_targets['partial_relation_class']
@@ -440,16 +454,23 @@ class Network(object):
 
       partial_relation_class = tf.multiply(tf.to_float(partial_relation_class), expand_mask)
       self.partial_relation_class = partial_relation_class
+      partial_rel_class = tf.reshape(partial_relation_class, (-1, 43))
+      rel_cls_score = tf.reshape(rel_cls_score, (-1, 43))
+      rel_ce = tf.nn.softmax_cross_entropy_with_logits(logits=rel_cls_score, labels=partial_rel_class)
 
-      partial_rel_class = tf.reshape(partial_relation_class, (-1, 43))[:,:-1]
-      nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class)) + 1.0
+      # positive relation
+      nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1])) + 1.0
       self.nof_rels = nof_rels
-      rels_for_loss = tf.to_float(tf.reduce_sum(partial_rel_class, axis=1))
+      rels_for_loss = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1], axis=1))
       self.rels_for_loss = rels_for_loss
-      rel_cls_score = tf.reshape(rel_cls_score, (-1, 43))[:,:-1]
-      
-      rel_cross_entropy = tf.reduce_sum(tf.multiply(rels_for_loss, tf.nn.softmax_cross_entropy_with_logits(logits=rel_cls_score, labels=partial_rel_class)))# / nof_rels
-      
+      rel_cross_entropy = tf.reduce_sum(tf.multiply(rels_for_loss, rel_ce))# / nof_rels
+
+      # negative relation
+      nof_neg_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,-1])) + 1.0
+      factor = 3.0 * tf.to_float(nof_rels) / nof_neg_rels
+      neg_rels_for_loss = factor * tf.to_float(partial_rel_class[:,-1])
+      rel_cross_entropy += tf.reduce_sum(tf.multiply(neg_rels_for_loss, rel_ce))# / nof_neg_rels
+
       ## sum losses
       self._losses['cross_entropy'] = cross_entropy
       self._losses['loss_box'] = loss_box
@@ -460,7 +481,7 @@ class Network(object):
       self._losses['rel_cross_entropy0'] = rel_cross_entropy0
       self._losses['ent_cross_entropy0'] = ent_cross_entropy0
       
-      loss = rpn_cross_entropy + rpn_loss_box + 0.1 * ent_cross_entropy + 0.1 * rel_cross_entropy + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 + cross_entropy + 0.1 * loss_box
+      loss = rpn_cross_entropy + rpn_loss_box + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 + 0.2 * cross_entropy
       #loss = rpn_cross_entropy + rpn_loss_box + cross_entropy + ent_cross_entropy + rel_cross_entropy + ent_cross_entropy0 + rel_cross_entropy0 # / tf.to_float(tf.shape(self._proposal_targets["labels"])[0])
       regularization_loss = tf.add_n(tf.losses.get_regularization_losses(), 'regu')
       self._losses['total_loss'] = loss# + regularization_loss
@@ -699,7 +720,7 @@ class Network(object):
                                                                           self._predictions['rois'],
                                                                           self._proposal_targets['partial_entity_class']], feed_dict=feed_dict)
 
-    return rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, loss_ent0, loss_rel0, loss, pred, pred_prob, pred_boxes0, pred_boxes, ent, rel, ent0, rel0, rois
+    return rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, loss_ent0, loss_rel0, loss, pred_label, pred, pred_prob, pred_boxes0, pred_boxes, ent, rel, ent0, rel0, rois
 
   def train_step_with_summary(self, sess, blobs, train_op):
     feed_dict = {self._image: blobs['data'], self._im_info: blobs['im_info'],

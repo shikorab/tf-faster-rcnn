@@ -361,7 +361,7 @@ class SolverWrapper(object):
                 obj_iou = float(accum_results['obj_iou']) / accum_results['total']
                 acc = float(accum_results['acc']) / accum_results['total']
                 acc0 = float(accum_results['acc0']) / (accum_results['acc0_total'] + 1.0)
-                acc1 = float(accum_results['acc1']) / ((accum_results['acc1_total'] + 1.0)
+                acc1 = float(accum_results['acc1']) / (accum_results['acc1_total'] + 1.0)
                 acc2 = float(accum_results['acc2']) / (accum_results['acc2_total'] + 1.0)
                 acc3 = float(accum_results['acc3']) / (accum_results['acc3_total'] + 1.0)
 
@@ -449,13 +449,12 @@ class SolverWrapper(object):
                 acc3 = float(accum_results['acc3']) / (accum_results['acc3_total'] + 1.0)
 
 
-                print('%s iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
-                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f\n >>> loss_ent0: %.6f loss_rel0: %.6f ent0_acc: %.6f rel0_acc: %.6f\n >>> lr: %f' % \
-                      (cfg.TRAIN.SNAPSHOT_PREFIX, int(epoch_iter), total_loss, rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, ent_accuracy, rel_accuracy, loss_ent0, loss_rel0, ent0_accuracy, rel0_accuracy, lr.eval()))
-                print('speed: {:.3f}s / iter'.format(timer.average_time))
+                print('%s (%s): epoch %d iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
+                      '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f\n >>> loss_ent0: %.6f loss_rel0: %.6f ent0_acc: %.6f rel0_acc: %.6f \n >>> lr: %f' % \
+                      (name, cfg.TRAIN.SNAPSHOT_PREFIX, epoch, int(epoch_iter), epoch_total_loss / epoch_iter, epoch_rpn_loss_cls / epoch_iter,
+                       epoch_rpn_loss_box / epoch_iter, epoch_loss_cls / epoch_iter, epoch_loss_box / epoch_iter, epoch_ent / epoch_iter, epoch_rel / epoch_iter, epoch_ent_accuracy / epoch_iter, epoch_rel_accuracy / epoch_iter, epoch_ent0 / epoch_iter, epoch_rel0 / epoch_iter, epoch_ent0_accuracy / epoch_iter, epoch_rel0_accuracy / epoch_iter,lr.eval()))
                 print('sub_iou: {} obj_iou {} rpn_overlaps {} rpn_overlaps0 {}'.format(sub_iou, obj_iou, epoch_rpn_overlaps / epoch_iter, epoch_rpn_overlaps0 / epoch_iter))
                 print('acc: {} acc0: {} acc1: {} acc2: {} acc3: {}'.format(acc, acc0, acc1, acc2, acc3))
-
 
 def get_training_roidb(imdb):
     """Returns a roidb (Region of Interest database) for use in training."""
@@ -550,11 +549,11 @@ def iou_test(gt, gt_bbox, pred_label, pred, pred_prob, pred_bbox, im_info):
 
     results["sub_iou"] = 0.0
     results["obj_iou"] = 0.0
-    results["acc"] = np.sum(pred == pred_label).astype(float)
+    results["acc"] = np.sum(pred == pred_label).astype(float) / pred_label.shape[0] 
     for i in range(4):
         total = np.sum(pred_label == i).astype(float)
         if total != 0:
-            results["acc" + str(i)] = np.sum(np.logical_and(pred == pred_label, pred_lable == i).astype(float) / total
+            results["acc" + str(i)] = np.sum(np.logical_and(pred == pred_label, pred_label == i)).astype(float) / total
             results["acc" + str(i) + "_total"] = 1.0
         else:
             results["acc" + str(i)] = 0.0
