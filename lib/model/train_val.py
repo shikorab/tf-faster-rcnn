@@ -115,10 +115,10 @@ class SolverWrapper(object):
             last_snapshot_iter = pickle.load(fid)
 
             np.random.set_state(st0)
-            self.data_layer._cur = cur
-            self.data_layer._perm = perm
-            self.data_layer_val._cur = cur_val
-            self.data_layer_val._perm = perm_val
+            #self.data_layer._cur = cur
+            #self.data_layer._perm = perm
+            #self.data_layer_val._cur = cur_val
+            #self.data_layer_val._perm = perm_val
 
         return last_snapshot_iter
 
@@ -297,16 +297,19 @@ class SolverWrapper(object):
         stepsizes.reverse()
         next_stepsize = stepsizes.pop()
 
-        while iter < max_iters + 1:
-            self.run_epoch(iter, self.data_layer, "train", sess, lr, train_op)
-            self.run_epoch(iter, self.data_layer_val, "validation", sess, lr, None)
+        sess.run(tf.assign(lr, rate))
 
+        while iter < max_iters + 1:
+            
             if iter == next_stepsize + 1:
                 # Add snapshot here before reducing the learning rate
                 self.snapshot(sess, iter)
                 rate *= cfg.TRAIN.GAMMA
                 sess.run(tf.assign(lr, rate))
                 next_stepsize = stepsizes.pop()
+            
+            self.run_epoch(iter, self.data_layer, "train", sess, lr, train_op)
+            self.run_epoch(iter, self.data_layer_val, "validation", sess, lr, None)
 
             # Snapshotting
             if iter % cfg.TRAIN.SNAPSHOT_ITERS == 0:
@@ -406,7 +409,7 @@ class SolverWrapper(object):
                 gt_bbox_norm[:, 3] /= im[0]
                 rpn_overlaps0, rpn_overlaps, ent_accuracy, rel_accuracy, ent0_accuracy, rel0_accuracy = rpn_test(gt_bbox_norm, gt_ent, pred_boxes0, pred_boxes, ent, ent0, gt_rel, rel, rel0)
                 for query_index in range(gt.shape[0]):
-                    results = iou_test(gt[query_index], gt_bbox_norm, pred_label[query_index, :, 0], pred[query_index], pred_prob[query_index], pred_boxes0, blobs['im_info'])
+                    results = iou_test(gt[query_index], gt_bbox_norm, pred_label[query_index, :, 0], pred[query_index], pred_prob[query_index], pred_boxes, blobs['im_info'])
                     # accumulate results
                     if accum_results is None:
                         accum_results = results

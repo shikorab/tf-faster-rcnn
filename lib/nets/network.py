@@ -387,7 +387,7 @@ class Network(object):
       self.ce = ce
       w_ce = tf.multiply(expand_mask, ce)
       self.wce = w_ce
-      cross_entropy = tf.to_float(Q) * tf.reduce_sum(w_ce) / nof 
+      cross_entropy = tf.reduce_sum(w_ce) #tf.to_float(Q) * tf.reduce_sum(w_ce) / nof 
       
       mask = self._proposal_targets['labels_mask']
       mask = tf.where(mask > 0.1, tf.ones_like(mask), tf.zeros_like(mask)) 
@@ -481,8 +481,9 @@ class Network(object):
       self._losses['rel_cross_entropy0'] = rel_cross_entropy0
       self._losses['ent_cross_entropy0'] = ent_cross_entropy0
       
-      loss = rpn_cross_entropy + rpn_loss_box + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 + 0.2 * cross_entropy
-      #loss = rpn_cross_entropy + rpn_loss_box + cross_entropy + ent_cross_entropy + rel_cross_entropy + ent_cross_entropy0 + rel_cross_entropy0 # / tf.to_float(tf.shape(self._proposal_targets["labels"])[0])
+      loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 + 0.2 * cross_entropy
+      #loss = rpn_cross_entropy + rpn_loss_box  + 0.2 * cross_entropy
+      #loss = rpn_cross_entropy + rpn_loss_box + 0.2 * cross_entropy + 0.01 * ent_cross_entropy + 0.01 * rel_cross_entropy + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 # / tf.to_float(tf.shape(self._proposal_targets["labels"])[0])
       regularization_loss = tf.add_n(tf.losses.get_regularization_losses(), 'regu')
       self._losses['total_loss'] = loss# + regularization_loss
 

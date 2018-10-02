@@ -32,9 +32,9 @@ case ${DATASET} in
     RATIOS="[0.5,1,2]"
     ;;
   visual_genome)
-    TRAIN_IMDB="visual_genome_test"
+    TRAIN_IMDB="visual_genome_train"
     TEST_IMDB="visual_genome_test"
-    STEPSIZE="[4,8,16,20,24,28]"
+    STEPSIZE="[1,2,3,4,5,6]"
     ITERS=200
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"

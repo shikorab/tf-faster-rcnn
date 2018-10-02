@@ -140,9 +140,6 @@ class vg(imdb):
     for ix, obj in enumerate(image.objects):
       if image.objects[ix].x > width - 2 or image.objects[ix].y > height - 2:
           continue 
-      #if image.objects[ix].x < 0 or image.objects[ix].y < 0 or image.objects[ix].x + image.objects[ix].width > width or \
-      #                        image.objects[ix].y + image.objects[ix].height > height:
-      #  continue
       assert(image.objects[ix].width > 0)
       assert(image.objects[ix].height > 0)
 
@@ -163,9 +160,6 @@ class vg(imdb):
     for ix, obj in enumerate(image.objects):
       if image.objects[ix].x > width - 2 or image.objects[ix].y > height - 2:
           continue
-      #if image.objects[ix].x < 0 or image.objects[ix].y < 0 or image.objects[ix].x + image.objects[ix].width > width - 1 or \
-      #                        image.objects[ix].y + image.objects[ix].height > height - 1:
-      #  continue
       # Make pixel indexes 0-based
       x1_offset = 0.0#image.objects[ix].width * (-0.1)
       x2_offset = 0.0#image.objects[ix].width * 0.1
@@ -177,8 +171,8 @@ class vg(imdb):
       boxes[index][3] = min((image.objects[ix].y + y2_offset + image.objects[ix].height), height - 1)
       seg_areas[index] = (boxes[index][2] - boxes[index][0] + 1.0) * (boxes[index][3] - boxes[index][1] + 1.0)
       index += 1
-    assert (boxes[:, 2] >= boxes[:, 0]).all()
-    assert (boxes[:, 3]	 >= boxes[:, 1]).all()  
+    assert (boxes[:, 2] > boxes[:, 0]).all()
+    assert (boxes[:, 3]	 > boxes[:, 1]).all()  
     #load gt classes
     
     i_index = 0
@@ -194,7 +188,7 @@ class vg(imdb):
             partial_relation_class[i_index, j_index] = image.predicates_labels[i, j]
             j_index += 1
         i_index += 1
-        
+    seen = []
     for query_index in range(image.queries_gt.shape[0]):
       query_gt_classes = np.zeros((1, num_objs, 1), dtype=np.int32)
       query_overlaps = np.zeros((1, num_objs, self.num_classes), dtype=np.int64)
@@ -207,14 +201,16 @@ class vg(imdb):
       sub = image.one_hot_relations_gt[query_index][:96]
       obj = image.one_hot_relations_gt[query_index][96:96 * 2]
       rel = image.one_hot_relations_gt[query_index][96 * 2:]
+      key = str(np.argmax(sub)) + "_" + str(np.argmax(rel)) + "_" + str(np.argmax(obj))
+      if key in seen:
+          continue
+      seen.append(key)
+
       found = False
       i_index = 0
       for i in range(image.objects_labels.shape[0]):
         if image.objects[i].x > width - 2 or image.objects[i].y > height - 2:
             continue
-        #if image.objects[i].x < 0 or image.objects[i].y < 0 or image.objects[i].x + image.objects[i].width > width - 1 or \
-        #                        image.objects[i].y + image.objects[i].height > height - 1:
-        #  continue
         if not np.array_equal(image.objects_labels[i], sub):
           i_index += 1
           continue
@@ -222,8 +218,6 @@ class vg(imdb):
         for j in range(image.objects_labels.shape[0]):
           if image.objects[j].x > width - 2 or image.objects[j].y > height - 2:
               continue  
-          #if image.objects[j].x < 0 or image.objects[j].y < 0  or image.objects[j].x + image.objects[j].width > width - 1 or image.objects[j].y + image.objects[j].height > height - 1:
-          #  continue
 
           if not np.array_equal(image.objects_labels[j], obj):
             j_index += 1
@@ -235,6 +229,7 @@ class vg(imdb):
             query_gt_classes[0, j_index, 0] = 2
             query_overlaps[0, j_index, 2] = 1
             query_overlaps[0, j_index, 3] = 0
+            
             #partial_entity_class[i_index] = sub
             #partial_entity_class[j_index] = obj
             #partial_relation_class[i_index, j_index] = rel
