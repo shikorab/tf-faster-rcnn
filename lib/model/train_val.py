@@ -11,6 +11,7 @@ from model.config import cfg
 import roi_data_layer.roidb as rdl_roidb
 from roi_data_layer.layer import RoIDataLayer
 from utils.timer import Timer
+import keras as k
 
 try:
     import cPickle as pickle
@@ -303,7 +304,6 @@ class SolverWrapper(object):
             
             if iter == next_stepsize + 1:
                 # Add snapshot here before reducing the learning rate
-                self.snapshot(sess, iter)
                 rate *= cfg.TRAIN.GAMMA
                 sess.run(tf.assign(lr, rate))
                 next_stepsize = stepsizes.pop()
@@ -362,19 +362,28 @@ class SolverWrapper(object):
             if new_epoch:
                 sub_iou = float(accum_results['sub_iou']) / accum_results['total']
                 obj_iou = float(accum_results['obj_iou']) / accum_results['total']
+                sub_kl = float(accum_results['sub_kl']) / accum_results['total']
+                obj_kl = float(accum_results['obj_kl']) / accum_results['total']
+                
                 acc = float(accum_results['acc']) / accum_results['total']
                 acc0 = float(accum_results['acc0']) / (accum_results['acc0_total'] + 1.0)
                 acc1 = float(accum_results['acc1']) / (accum_results['acc1_total'] + 1.0)
                 acc2 = float(accum_results['acc2']) / (accum_results['acc2_total'] + 1.0)
                 acc3 = float(accum_results['acc3']) / (accum_results['acc3_total'] + 1.0)
+                prec0 = float(accum_results['prec0']) / (accum_results['prec0_total'] + 1.0)
+                prec1 = float(accum_results['prec1']) / (accum_results['prec1_total'] + 1.0)
+                prec2 = float(accum_results['prec2']) / (accum_results['prec2_total'] + 1.0)
+                prec3 = float(accum_results['prec3']) / (accum_results['prec3_total'] + 1.0)
 
 
                 print('%s (%s): epoch %d iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
                       '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f\n >>> loss_ent0: %.6f loss_rel0: %.6f ent0_acc: %.6f rel0_acc: %.6f \n >>> lr: %f' % \
                       (name, cfg.TRAIN.SNAPSHOT_PREFIX, epoch, int(epoch_iter), epoch_total_loss / epoch_iter, epoch_rpn_loss_cls / epoch_iter,
                        epoch_rpn_loss_box / epoch_iter, epoch_loss_cls / epoch_iter, epoch_loss_box / epoch_iter, epoch_ent / epoch_iter, epoch_rel / epoch_iter, epoch_ent_accuracy / epoch_iter, epoch_rel_accuracy / epoch_iter, epoch_ent0 / epoch_iter, epoch_rel0 / epoch_iter, epoch_ent0_accuracy / epoch_iter, epoch_rel0_accuracy / epoch_iter,lr.eval()))
-                print('sub_iou: {} obj_iou {} rpn_overlaps {} rpn_overlaps0 {}'.format(sub_iou, obj_iou, epoch_rpn_overlaps / epoch_iter, epoch_rpn_overlaps0 / epoch_iter))
+                print('sub_iou: {} obj_iou {} sub_kl: {} obj_kl {} rpn_overlaps {} rpn_overlaps0 {}'.format(sub_iou, obj_iou, sub_kl, obj_kl, epoch_rpn_overlaps / epoch_iter, epoch_rpn_overlaps0 / epoch_iter))
                 print('acc: {} acc0: {} acc1: {} acc2: {} acc3: {}'.format(acc, acc0, acc1, acc2, acc3))
+                print('prec0: {} prec1: {} prec2: {} prec3: {}'.format(prec0, prec1, prec2, prec3))
+
                 return
 	    
             if blobs["query"].shape[0] == 0 or blobs["gt_boxes"].shape[0] == 0:
@@ -442,22 +451,30 @@ class SolverWrapper(object):
             timer.toc()
 
             # Display training information
-            if epoch == 1 and int(epoch_iter) % (cfg.TRAIN.DISPLAY) == 0:
+            if (epoch == 1 and int(epoch_iter) % (cfg.TRAIN.DISPLAY) == 0) or (int(epoch_iter) % (10000) == 0):
                 sub_iou = float(accum_results['sub_iou']) / accum_results['total']
                 obj_iou = float(accum_results['obj_iou']) / accum_results['total']
+                sub_kl = float(accum_results['sub_kl']) / accum_results['total']
+                obj_kl = float(accum_results['obj_kl']) / accum_results['total']
+                
                 acc = float(accum_results['acc']) / accum_results['total']
                 acc0 = float(accum_results['acc0']) / (accum_results['acc0_total'] + 1.0)
                 acc1 = float(accum_results['acc1']) / (accum_results['acc1_total'] + 1.0)
                 acc2 = float(accum_results['acc2']) / (accum_results['acc2_total'] + 1.0)
                 acc3 = float(accum_results['acc3']) / (accum_results['acc3_total'] + 1.0)
+                prec0 = float(accum_results['prec0']) / (accum_results['prec0_total'] + 1.0)
+                prec1 = float(accum_results['prec1']) / (accum_results['prec1_total'] + 1.0)
+                prec2 = float(accum_results['prec2']) / (accum_results['prec2_total'] + 1.0)
+                prec3 = float(accum_results['prec3']) / (accum_results['prec3_total'] + 1.0)
 
 
                 print('%s (%s): epoch %d iter: %d, total loss: %.6f\n >>> rpn_loss_cls: %.6f\n '
                       '>>> rpn_loss_box: %.6f\n >>> loss_cls: %.6f\n >>> loss_box: %.6f\n >>> loss_ent: %.6f loss_rel: %.6f ent_acc: %.6f rel_acc: %.6f\n >>> loss_ent0: %.6f loss_rel0: %.6f ent0_acc: %.6f rel0_acc: %.6f \n >>> lr: %f' % \
                       (name, cfg.TRAIN.SNAPSHOT_PREFIX, epoch, int(epoch_iter), epoch_total_loss / epoch_iter, epoch_rpn_loss_cls / epoch_iter,
                        epoch_rpn_loss_box / epoch_iter, epoch_loss_cls / epoch_iter, epoch_loss_box / epoch_iter, epoch_ent / epoch_iter, epoch_rel / epoch_iter, epoch_ent_accuracy / epoch_iter, epoch_rel_accuracy / epoch_iter, epoch_ent0 / epoch_iter, epoch_rel0 / epoch_iter, epoch_ent0_accuracy / epoch_iter, epoch_rel0_accuracy / epoch_iter,lr.eval()))
-                print('sub_iou: {} obj_iou {} rpn_overlaps {} rpn_overlaps0 {}'.format(sub_iou, obj_iou, epoch_rpn_overlaps / epoch_iter, epoch_rpn_overlaps0 / epoch_iter))
+                print('sub_iou: {} obj_iou {} sub_kl: {} obj_kl {} rpn_overlaps {} rpn_overlaps0 {}'.format(sub_iou, obj_iou, sub_kl, obj_kl, epoch_rpn_overlaps / epoch_iter, epoch_rpn_overlaps0 / epoch_iter))
                 print('acc: {} acc0: {} acc1: {} acc2: {} acc3: {}'.format(acc, acc0, acc1, acc2, acc3))
+                print('prec0: {} prec1: {} prec2: {} prec3: {}'.format(prec0, prec1, prec2, prec3))
 
 def get_training_roidb(imdb):
     """Returns a roidb (Region of Interest database) for use in training."""
@@ -516,7 +533,7 @@ def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
         print('done solving')
 
 
-MASK_WIDTH = 32
+MASK_WIDTH = 14
 def softmax(x):
     xexp = np.exp(x)
     return xexp / np.sum(xexp, axis=-1, keepdims=1)
@@ -552,6 +569,9 @@ def iou_test(gt, gt_bbox, pred_label, pred, pred_prob, pred_bbox, im_info):
 
     results["sub_iou"] = 0.0
     results["obj_iou"] = 0.0
+    results["sub_kl"] = 0.0
+    results["obj_kl"] = 0.0
+    
     results["acc"] = np.sum(pred == pred_label).astype(float) / pred_label.shape[0] 
     for i in range(4):
         total = np.sum(pred_label == i).astype(float)
@@ -562,50 +582,86 @@ def iou_test(gt, gt_bbox, pred_label, pred, pred_prob, pred_bbox, im_info):
             results["acc" + str(i)] = 0.0
             results["acc" + str(i) + "_total"] = 0.0
 
- 
-    width = MASK_WIDTH
-    height = int(np.ceil(float(MASK_WIDTH) / im_info[1] * im_info[0]))
-    MASK_SHAPE = (width, height) 
-    mask_sub_gt = np.zeros(MASK_SHAPE, dtype=bool)
-    mask_obj_gt = np.zeros(MASK_SHAPE, dtype=bool)
-    mask_sub_pred = np.zeros(MASK_SHAPE, dtype=bool)
-    mask_obj_pred = np.zeros(MASK_SHAPE, dtype=bool)
+    for i in range(4):
+        total = np.sum(pred == i).astype(float)
+        if total != 0:
+            results["prec" + str(i)] = np.sum(np.logical_and(pred == pred_label, pred_label == i)).astype(float) / total
+            results["prec" + str(i) + "_total"] = 1.0
+        else:
+            results["prec" + str(i)] = 0.0
+            results["prec" + str(i) + "_total"] = 0.0
 
-    # most probable sub and obj
+    width = MASK_WIDTH
+    height = MASK_WIDTH#int(np.ceil(float(MASK_WIDTH) / im_info[1] * im_info[0]))
+    MASK_SHAPE = (width, height) 
+    mask_sub_gt = np.zeros(MASK_SHAPE, dtype=float)
+    mask_obj_gt = np.zeros(MASK_SHAPE, dtype=float)
+    mask_sub_pred = np.zeros(MASK_SHAPE, dtype=float)
+    mask_obj_pred = np.zeros(MASK_SHAPE, dtype=float)
+    mask_sub_pred_bool = np.zeros(MASK_SHAPE, dtype=bool)
+    mask_obj_pred_bool = np.zeros(MASK_SHAPE, dtype=bool)
+
+    # sub and obj bool mask
     i = np.argmax(pred_prob[:, 1])
-    mask_sub_pred[int(pred_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
-    int(pred_bbox[i][1] * MASK_SHAPE[1]):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
+    mask_sub_pred_bool[int(math.floor(pred_bbox[i][0] * MASK_SHAPE[0])):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
+    int(math.floor(pred_bbox[i][1] * MASK_SHAPE[1])):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
     i = np.argmax(pred_prob[:, 2])
-    mask_obj_pred[int(pred_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
-    int(pred_bbox[i][1] * MASK_SHAPE[1]):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
+    mask_obj_pred_bool[int(math.floor(pred_bbox[i][0] * MASK_SHAPE[0])):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
+    int(math.floor(pred_bbox[i][1] * MASK_SHAPE[1])):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
+    for i in range(pred.shape[0]):
+        if pred[i] == 1:
+            x1 = int(math.floor(pred_bbox[i][0] * MASK_SHAPE[0]))
+            x2 = int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0]))
+            y1 = int(math.floor(pred_bbox[i][1] * MASK_SHAPE[1]))
+            y2 = int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))
+            mask_sub_pred_bool[x1:x2, y1:y2] = True
+        if pred[i] == 2:
+            x1 = int(math.floor(pred_bbox[i][0] * MASK_SHAPE[0]))
+            x2 = int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0]))
+            y1 = int(math.floor(pred_bbox[i][1] * MASK_SHAPE[1]))
+            y2 = int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))
+            mask_obj_pred_bool[x1:x2, y1:y2] = True
 
     # GT mask
     for i in range(gt.shape[0]):
         if gt[i] == 1:
-            mask_sub_gt[
-            int(gt_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(gt_bbox[i][2] * MASK_SHAPE[0])),
-            int(gt_bbox[i][1] * MASK_SHAPE[1]):int(
-                math.ceil(gt_bbox[i][3] * MASK_SHAPE[1]))] = True
+            x1 = int(math.floor(gt_bbox[i][0] * MASK_SHAPE[0]))
+            x2 = int(math.ceil(gt_bbox[i][2] * MASK_SHAPE[0]))
+            y1 = int(math.floor(gt_bbox[i][1] * MASK_SHAPE[1]))
+            y2 = int(math.ceil(gt_bbox[i][3] * MASK_SHAPE[1]))
+            mask_sub_gt[x1:x2, y1:y2] = 1.0
         if gt[i] == 2:
-            mask_obj_gt[
-            int(gt_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(gt_bbox[i][2] * MASK_SHAPE[0])),
-            int(gt_bbox[i][1] * MASK_SHAPE[1]):int(
-                math.ceil(gt_bbox[i][3] * MASK_SHAPE[1]))] = True
+            x1 = int(math.floor(gt_bbox[i][0] * MASK_SHAPE[0]))
+            x2 = int(math.ceil(gt_bbox[i][2] * MASK_SHAPE[0]))
+            y1 = int(math.floor(gt_bbox[i][1] * MASK_SHAPE[1]))
+            y2 = int(math.ceil(gt_bbox[i][3] * MASK_SHAPE[1]))
+            mask_obj_gt[x1:x2, y1:y2] = 1.0
 
     # predicted mask
     for i in range(pred.shape[0]):
-        if pred[i] == 1:
-            mask_sub_pred[int(pred_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
-            int(pred_bbox[i][1] * MASK_SHAPE[1]):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
-        if pred[i] == 2:
-            mask_obj_pred[int(pred_bbox[i][0] * MASK_SHAPE[0]):int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0])),
-            int(pred_bbox[i][1] * MASK_SHAPE[1]):int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))] = True
+        x1 = int(math.floor(pred_bbox[i][0] * MASK_SHAPE[0]))
+        x2 = int(math.ceil(pred_bbox[i][2] * MASK_SHAPE[0]))
+        y1 = int(math.floor(pred_bbox[i][1] * MASK_SHAPE[1]))
+        y2 = int(math.ceil(pred_bbox[i][3] * MASK_SHAPE[1]))
+        mask = np.zeros(MASK_SHAPE, dtype=float)
+        mask[x1:x2, y1:y2] = 1.0
+        mask_sub_pred = np.maximum(mask_sub_pred, mask * pred_prob[i, 1])
+        mask_obj_pred = np.maximum(mask_obj_pred, mask * pred_prob[i, 2])
+        #mask_bg_pred = np.maximum(mask_bg_pred, mask * pred_prob[i, 3])
+        #mask_neg_pred = np.maximum(mask_neg_pred, mask * pred_prob[i, 0])
 
-    sub_iou = iou(mask_sub_gt, mask_sub_pred)
-    obj_iou = iou(mask_obj_gt, mask_obj_pred)
+    #mask_sub = mask_sub_pred > 0.3
+    #mask_obj = mask_obj_pred > 0.3
+    sub_iou = iou(mask_sub_gt.astype(bool), mask_sub_pred_bool)
+    obj_iou = iou(mask_obj_gt.astype(bool), mask_obj_pred_bool)
+    sub_kl = kl(mask_sub_gt, mask_sub_pred)
+    obj_kl = kl(mask_obj_gt, mask_obj_pred)
+
 
     results["sub_iou"] += sub_iou
     results["obj_iou"] += obj_iou
+    results["sub_kl"] += sub_kl
+    results["obj_kl"] += obj_kl
 
     return results
 
@@ -616,3 +672,9 @@ def iou(mask_a, mask_b):
         return 0.0
     intersection = np.sum(np.logical_and(mask_a, mask_b))
     return float(intersection) / float(union)
+
+def kl(mask_gt, mask_pred):
+    gt = mask_gt.astype(float) / (np.sum(mask_gt) + k.backend.epsilon())
+    pred = mask_pred.astype(float) / (np.sum(mask_pred) + k.backend.epsilon())
+    x = np.log(k.backend.epsilon() + gt/(pred + k.backend.epsilon()))
+    return np.sum(x * gt)

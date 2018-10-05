@@ -107,9 +107,6 @@ if __name__ == '__main__':
   imdb, roidb = combined_roidb(args.imdb_name)
   print('{:d} roidb entries'.format(len(roidb)))
 
-  #imdb = IMDB()
-  #roidb = IMDB()
-
   # output directory where the models are saved
   output_dir = get_output_dir(imdb, args.tag)
   print('Output will be saved to `{:s}`'.format(output_dir))
@@ -125,8 +122,7 @@ if __name__ == '__main__':
   #valroidb = roidb
   print('{:d} validation roidb entries'.format(len(valroidb)))
   cfg.TRAIN.USE_FLIPPED = orgflip
-  #valroidb = IMDB()
-  #valroidb.name = "vg"
+
 
   
 

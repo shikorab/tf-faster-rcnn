@@ -34,7 +34,7 @@ case ${DATASET} in
   visual_genome)
     TRAIN_IMDB="visual_genome_train"
     TEST_IMDB="visual_genome_test"
-    STEPSIZE="[1,2,3,4,5,6]"
+    STEPSIZE="[2,4,6,8]"
     ITERS=200
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"

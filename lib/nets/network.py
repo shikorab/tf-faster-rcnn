@@ -367,7 +367,7 @@ class Network(object):
       masked_label = tf.multiply(expand_mask, tf.to_float(label))
       nof_poss = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(masked_label, 1) | tf.equal(masked_label, 2)), axis=1))
       nof_negs = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(masked_label, 0) | tf.equal(masked_label, 3)), axis=1))
-      factor = 3.0 * tf.to_float(nof_poss) / nof_negs
+      factor = 0.3 * tf.to_float(nof_poss) / nof_negs
       self.factor = factor
 
       factor = tf.squeeze(factor)
@@ -376,7 +376,7 @@ class Network(object):
 
       expand_mask_factor = tf.transpose(tf.transpose(expand_mask) * factor)
       
-      expand_mask = tf.where(tf.equal(label, 0) | tf.equal(label, 3), expand_mask_factor, expand_mask)
+      #expand_mask = tf.where(tf.equal(label, 0) | tf.equal(label, 3), expand_mask_factor, expand_mask)
       self.expand_mask2 = expand_mask
       expand_mask = tf.reshape(expand_mask, [-1])
       cls_score = tf.reshape(self._predictions["cls_score"], [-1, self._num_classes])
@@ -387,7 +387,7 @@ class Network(object):
       self.ce = ce
       w_ce = tf.multiply(expand_mask, ce)
       self.wce = w_ce
-      cross_entropy = tf.reduce_sum(w_ce) #tf.to_float(Q) * tf.reduce_sum(w_ce) / nof 
+      cross_entropy = tf.to_float(Q) * tf.reduce_mean(ce) 
       
       mask = self._proposal_targets['labels_mask']
       mask = tf.where(mask > 0.1, tf.ones_like(mask), tf.zeros_like(mask)) 
@@ -408,13 +408,13 @@ class Network(object):
       self.nof_ents0 = nof_ents
       ents_for_loss = tf.to_float(tf.reduce_sum(self._partial_entity_class, axis=1))
       self.ents_for_loss0 = ents_for_loss     
-      ent_cross_entropy0 = tf.reduce_sum(tf.multiply(ents_for_loss,  tf.nn.softmax_cross_entropy_with_logits(logits=ent_cls_score0, labels=self._partial_entity_class)))# / nof_ents
+      ent_cross_entropy0 = tf.reduce_sum(tf.multiply(ents_for_loss,  tf.nn.softmax_cross_entropy_with_logits_v2(logits=ent_cls_score0, labels=self._partial_entity_class)))# / nof_ents
       self.ent_cross_entropy0 = ent_cross_entropy0
       
       # relation
       partial_rel_class = tf.reshape(self._partial_relation_class, (-1, 43))
       rel_cls_score0 = tf.reshape(rel_cls_score0, (-1, 43))
-      rel_ce = tf.nn.softmax_cross_entropy_with_logits(logits=rel_cls_score0, labels=partial_rel_class)
+      rel_ce = tf.nn.softmax_cross_entropy_with_logits_v2(logits=rel_cls_score0, labels=partial_rel_class)
 
       # positive relation
       nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1])) + 1.0
@@ -425,7 +425,7 @@ class Network(object):
 
       # negative relation
       nof_neg_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,-1])) + 1.0
-      factor = 3.0 * tf.to_float(nof_rels) / nof_neg_rels
+      factor = 0.3 * tf.to_float(nof_rels) / nof_neg_rels
       neg_rels_for_loss = factor * tf.to_float(partial_rel_class[:,-1])
       rel_cross_entropy0 += tf.reduce_sum(tf.multiply(neg_rels_for_loss, rel_ce))# / nof_neg_rels
 
@@ -442,7 +442,7 @@ class Network(object):
       ents_for_loss = tf.to_float(tf.reduce_sum(partial_entity_class, axis=1))
       self.ents_for_loss = ents_for_loss
       
-      ent_cross_entropy = tf.reduce_sum(tf.multiply(ents_for_loss,  tf.nn.softmax_cross_entropy_with_logits(logits=ent_cls_score, labels=partial_entity_class)))# / nof_ents
+      ent_cross_entropy = tf.reduce_sum(tf.multiply(ents_for_loss,  tf.nn.softmax_cross_entropy_with_logits_v2(logits=ent_cls_score, labels=partial_entity_class)))# / nof_ents
       
       # relation
       N = tf.slice(tf.shape(mask), [0], [1], name="N")
@@ -456,7 +456,7 @@ class Network(object):
       self.partial_relation_class = partial_relation_class
       partial_rel_class = tf.reshape(partial_relation_class, (-1, 43))
       rel_cls_score = tf.reshape(rel_cls_score, (-1, 43))
-      rel_ce = tf.nn.softmax_cross_entropy_with_logits(logits=rel_cls_score, labels=partial_rel_class)
+      rel_ce = tf.nn.softmax_cross_entropy_with_logits_v2(logits=rel_cls_score, labels=partial_rel_class)
 
       # positive relation
       nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1])) + 1.0
@@ -467,7 +467,7 @@ class Network(object):
 
       # negative relation
       nof_neg_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,-1])) + 1.0
-      factor = 3.0 * tf.to_float(nof_rels) / nof_neg_rels
+      factor = 0.3 * tf.to_float(nof_rels) / nof_neg_rels
       neg_rels_for_loss = factor * tf.to_float(partial_rel_class[:,-1])
       rel_cross_entropy += tf.reduce_sum(tf.multiply(neg_rels_for_loss, rel_ce))# / nof_neg_rels
 

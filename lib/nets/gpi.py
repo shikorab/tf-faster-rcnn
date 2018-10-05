@@ -108,10 +108,10 @@ class Gpi(object):
             ##
             # relation score
             self.relation_all_features = [self.expand_object_features, self.expand_subject_features, relation_features, expand_graph]
-            rel_score = self.nn(features=self.relation_all_features, layers=[512], out=43, scope_name="ent_score")
+            rel_score = self.nn(features=self.relation_all_features, layers=[], out=43, scope_name="ent_score")
             ##
             # entity score
-            ent_score = self.nn(features=[pred_node_features], layers=[512], out=96, scope_name="rel_score")
+            ent_score = self.nn(features=[pred_node_features], layers=[], out=96, scope_name="rel_score")
             
             ##
             # relation score
@@ -124,9 +124,9 @@ class Gpi(object):
             self.gt_expand_subject_features = tf.transpose(self.gt_expand_object_features, perm=[1, 0, 2])
 
             self.relation_all_features = [gt_relation_features, self.gt_expand_object_features, self.gt_expand_subject_features]
-            rel_score0 = self.nn(features=self.relation_all_features, layers=[512], out=43, scope_name="rel_score0")
+            rel_score0 = self.nn(features=self.relation_all_features, layers=[], out=43, scope_name="rel_score0")
             ##
             # entity score
-            ent_score0 = self.nn(features=[gt_node_features], layers=[512], out=96, scope_name="ent_score0")
+            ent_score0 = self.nn(features=[gt_node_features], layers=[], out=96, scope_name="ent_score0")
             
             return pred_node_features, expand_graph, ent_score, rel_score, ent_score0, rel_score0
