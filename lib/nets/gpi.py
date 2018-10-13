@@ -54,11 +54,11 @@ class Gpi(object):
             # Node Neighbours
             self.object_ngbrs = [self.expand_object_features, self.expand_subject_features, relation_features]
             # apply phi
-            self.object_ngbrs_phi = self.nn(features=self.object_ngbrs, layers=[self.nof_node_features, self.nof_node_features],
+            self.object_ngbrs_phi = self.nn(features=self.object_ngbrs, layers=self.layers,
                                             last_activation=self.activation_fn, out=self.nof_node_features, scope_name="nn_phi")
             # Attention mechanism
             if self.gpi_type == "FeatureAttention":
-                self.object_ngbrs_scores = self.nn(features=self.object_ngbrs, layers=[self.nof_node_features], out=self.nof_node_features,
+                self.object_ngbrs_scores = self.nn(features=self.object_ngbrs, layers=self.layers, out=self.nof_node_features,
                                                    scope_name="nn_phi_atten")
                 self.object_ngbrs_weights = tf.nn.softmax(self.object_ngbrs_scores, dim=1)
                 self.object_ngbrs_phi_all = tf.reduce_sum(tf.multiply(self.object_ngbrs_phi, self.object_ngbrs_weights),
@@ -77,11 +77,11 @@ class Gpi(object):
             # Nodes
             self.object_ngbrs2 = [node_features, self.object_ngbrs_phi_all]
             # apply alpha
-            self.object_ngbrs2_alpha = self.nn(features=self.object_ngbrs2, layers=[self.nof_node_features, self.nof_node_features], out=self.nof_node_features,
+            self.object_ngbrs2_alpha = self.nn(features=self.object_ngbrs2, layers=self.layers, out=self.nof_node_features,
                                                last_activation=self.activation_fn, scope_name="nn_phi2")
             # Attention mechanism
             if self.gpi_type == "FeatureAttention" or self.gpi_type == "Linguistic":
-                self.object_ngbrs2_scores = self.nn(features=self.object_ngbrs2, layers=[self.nof_node_features], out=self.nof_node_features,
+                self.object_ngbrs2_scores = self.nn(features=self.object_ngbrs2, layers=self.layers, out=self.nof_node_features,
                                                     scope_name="nn_phi2_atten")
                 self.object_ngbrs2_weights = tf.nn.softmax(self.object_ngbrs2_scores, dim=0)
                 self.object_ngbrs2_alpha_all = tf.reduce_sum(

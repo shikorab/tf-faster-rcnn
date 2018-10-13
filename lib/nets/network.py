@@ -316,9 +316,17 @@ class Network(object):
       expand_node_features = tf.concat((expand_node_features, expand_query), axis=2)
       self.expand_node_features = expand_node_features
       cls_prob, bbox_pred = self._region_classification(pred_node_features, expand_node_features, is_training,
-                                                      initializer, initializer_bbox)
+                                                      initializer, initializer_bbox, "gpi")
 
-    self._score_summaries.update(self._predictions)
+      expand_fc7_shape = tf.concat((Q, tf.shape(fc7)), 0)
+      expand_fc7 = tf.add(tf.zeros(expand_fc7_shape), fc7)
+            
+      expand_fc7 = tf.concat((expand_fc7, expand_query), axis=2)
+      self.expand_fc7 = expand_fc7
+      fc7_cls_prob, fc7_bbox_pred = self._region_classification(fc7, expand_fc7, is_training,
+                                                      initializer, initializer_bbox, "baseline")
+
+      self._score_summaries.update(self._predictions)
 
     return rois, cls_prob, bbox_pred
 
@@ -355,46 +363,56 @@ class Network(object):
       rpn_bbox_outside_weights = self._anchor_targets['rpn_bbox_outside_weights']
       rpn_loss_box = self._smooth_l1_loss(rpn_bbox_pred, rpn_bbox_targets, rpn_bbox_inside_weights,
                                           rpn_bbox_outside_weights, sigma=sigma_rpn, dim=[1, 2, 3])
-      # mask
+     # mask
       mask = tf.abs(tf.reshape(self._proposal_targets['labels_mask'], (-1,1)))
 
       # RCNN, class loss
       Q = tf.slice(tf.shape(self._query), [0], [1], name="Q")
       expand_mask_shape = tf.concat((Q, tf.shape(mask)), 0)
       expand_mask = tf.add(tf.zeros(expand_mask_shape), mask)
-      self.expand_mask = expand_mask
+      
       label = self._proposal_targets["labels"]
       masked_label = tf.multiply(expand_mask, tf.to_float(label))
-      nof_poss = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(masked_label, 1) | tf.equal(masked_label, 2)), axis=1))
-      nof_negs = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(masked_label, 0) | tf.equal(masked_label, 3)), axis=1))
-      factor = 0.3 * tf.to_float(nof_poss) / nof_negs
-      self.factor = factor
+      expand_mask = expand_mask[:,:,0]
+      label = label[:,:,0]
 
-      factor = tf.squeeze(factor)
-      expand_mask = tf.squeeze(expand_mask)
-      label = tf.squeeze(label)
-
-      expand_mask_factor = tf.transpose(tf.transpose(expand_mask) * factor)
+      nof_poss = (tf.reduce_sum(tf.to_float((tf.equal(label, 1) | tf.equal(label, 2)) & tf.not_equal(expand_mask, 0)), axis=1))
+      nof_bgs = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(label, 3) & tf.not_equal(expand_mask, 0)), axis=1))
+      bg_factor = 0.5 * tf.to_float(nof_poss) / nof_bgs
+      #bg_factor = tf.squeeze(bg_factor)
       
-      #expand_mask = tf.where(tf.equal(label, 0) | tf.equal(label, 3), expand_mask_factor, expand_mask)
-      self.expand_mask2 = expand_mask
-      expand_mask = tf.reshape(expand_mask, [-1])
-      cls_score = tf.reshape(self._predictions["cls_score"], [-1, self._num_classes])
-      label = tf.reshape(label, [-1])
+      nof_negs = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(label, 0) & tf.not_equal(expand_mask, 0)), axis=1))
+      neg_factor = 0.5 * tf.to_float(nof_poss) / nof_negs
+      #neg_factor = tf.squeeze(neg_factor)
+
+      expand_mask_bg_factor = tf.transpose(tf.transpose(expand_mask) * bg_factor)
+      expand_mask_neg_factor = tf.transpose(tf.transpose(expand_mask) * neg_factor)
+      #expand_mask = tf.where(tf.equal(label, 3), expand_mask_bg_factor, expand_mask)
+      expand_mask = tf.where(tf.equal(label, 0), expand_mask_neg_factor, expand_mask)
+      
       nof = tf.reduce_sum(expand_mask) + 1.0
-      self.nof = nof
-      ce = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_score, labels=label)
-      self.ce = ce
-      w_ce = tf.multiply(expand_mask, ce)
-      self.wce = w_ce
-      cross_entropy = tf.to_float(Q) * tf.reduce_mean(ce) 
+      self._proposal_targets['labels_expand_mask'] = expand_mask
+      expand_mask = tf.reshape(expand_mask, [-1])
+      cls_score = tf.reshape(self._predictions["cls_score_gpi"], [-1, self._num_classes])
+      label = tf.reshape(label, [-1])
       
+      ce = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_score, labels=label)
+      w_ce = tf.multiply(expand_mask, ce)
+      cross_entropy_gpi = tf.to_float(Q) * tf.reduce_sum(w_ce) / nof
+
+      cls_score = tf.reshape(self._predictions["cls_score_baseline"], [-1, self._num_classes])  
+      ce = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_score, labels=label)
+      w_ce = tf.multiply(expand_mask, ce)
+      cross_entropy_baseline = tf.to_float(Q) * tf.reduce_sum(w_ce) / nof
+
+      cross_entropy = cross_entropy_gpi + cross_entropy_baseline
+
       mask = self._proposal_targets['labels_mask']
       mask = tf.where(mask > 0.1, tf.ones_like(mask), tf.zeros_like(mask)) 
       mask = tf.reshape(mask, (-1,1))
 
       # RCNN, bbox loss
-      pred_bbox = self._predictions['pred_bbox']
+      pred_bbox = self._predictions['pred_bbox_gpi']
       bbox_targets = self._proposal_targets['bbox_targets']
       bbox_inside_weights = self._proposal_targets['bbox_inside_weights']
       bbox_outside_weights = self._proposal_targets['bbox_outside_weights']
@@ -472,7 +490,8 @@ class Network(object):
       rel_cross_entropy += tf.reduce_sum(tf.multiply(neg_rels_for_loss, rel_ce))# / nof_neg_rels
 
       ## sum losses
-      self._losses['cross_entropy'] = cross_entropy
+      self._losses['cross_entropy_gpi'] = cross_entropy_gpi
+      self._losses['cross_entropy_baseline'] = cross_entropy_baseline
       self._losses['loss_box'] = loss_box
       self._losses['rpn_cross_entropy'] = rpn_cross_entropy
       self._losses['rpn_loss_box'] = rpn_loss_box
@@ -481,9 +500,9 @@ class Network(object):
       self._losses['rel_cross_entropy0'] = rel_cross_entropy0
       self._losses['ent_cross_entropy0'] = ent_cross_entropy0
       
-      loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 + 0.2 * cross_entropy
-      #loss = rpn_cross_entropy + rpn_loss_box  + 0.2 * cross_entropy
-      #loss = rpn_cross_entropy + rpn_loss_box + 0.2 * cross_entropy + 0.01 * ent_cross_entropy + 0.01 * rel_cross_entropy + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 # / tf.to_float(tf.shape(self._proposal_targets["labels"])[0])
+      #loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 + 0.2 * cross_entropy
+      loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.2 * cross_entropy
+      #loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.2 * cross_entropy + 0.01 * ent_cross_entropy + 0.01 * rel_cross_entropy + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0
       regularization_loss = tf.add_n(tf.losses.get_regularization_losses(), 'regu')
       self._losses['total_loss'] = loss# + regularization_loss
 
@@ -531,28 +550,28 @@ class Network(object):
     self._predictions["roi_scores"] = roi_scores
     return rois
 
-  def _region_classification(self, orig_fc7, expand_node_features, is_training, initializer, initializer_bbox):
-    expand_node_features = slim.fully_connected(expand_node_features, 500,
-                                       weights_initializer=initializer,
-                                       trainable=is_training,
-                                       scope='cls_score__new')
-    cls_score = slim.fully_connected(expand_node_features, self._num_classes,
-                                       weights_initializer=initializer,
-                                       trainable=is_training,
-                                       activation_fn=None, scope='cls_score2__new')
-    cls_prob = self._softmax_layer(cls_score, "cls_prob")
-    cls_pred = tf.argmax(cls_score, axis=2, name="cls_pred")
+  def _region_classification(self, orig_fc7, expand_node_features, is_training, initializer, initializer_bbox, scope_name):
+    with tf.variable_scope(scope_name) as scope: 
+      expand_node_features = slim.fully_connected(expand_node_features, 500,
+                                           weights_initializer=initializer,
+                                           trainable=is_training,
+                                           scope='cls_score__new')
+      cls_score = slim.fully_connected(expand_node_features, self._num_classes,
+                                           weights_initializer=initializer,
+                                           trainable=is_training,
+                                           activation_fn=None, scope='cls_score2__new')
+      cls_prob = self._softmax_layer(cls_score, "cls_prob")
+      cls_pred = tf.argmax(cls_score, axis=2, name="cls_pred")
 
-    pred_bbox = slim.fully_connected(orig_fc7, 4,
-                                     weights_initializer=initializer_bbox,
-                                     trainable=is_training,
-                                     activation_fn=None, scope='bbox_pred__new')
-    self._predictions["fc7"] = orig_fc7
-    self._predictions["cls_score"] = cls_score
-    self._predictions["cls_pred"] = cls_pred
-    self._predictions["cls_prob"] = cls_prob
-    self._predictions["pred_bbox"] = pred_bbox
-
+      pred_bbox = slim.fully_connected(orig_fc7, 4,
+                                         weights_initializer=initializer_bbox,
+                                         trainable=is_training,
+                                         activation_fn=None, scope='bbox_pred__new')
+      self._predictions["fc7_"+scope_name] = orig_fc7
+      self._predictions["cls_score_"+scope_name] = cls_score
+      self._predictions["cls_pred_"+scope_name] = cls_pred
+      self._predictions["cls_prob_"+scope_name] = cls_prob
+      self._predictions["pred_bbox_"+scope_name] = pred_bbox
 
     return cls_prob, pred_bbox
 
@@ -677,51 +696,17 @@ class Network(object):
     feed_dict = {self._image: blobs['data'], self._im_info: blobs['im_info'],
                  self._gt_boxes: blobs['gt_boxes'], self._gt_labels: blobs['gt_labels'], self._query: blobs['query'],
                  self._partial_entity_class: blobs['partial_entity_class'], self._partial_relation_class: blobs['partial_relation_class']}
+    
     if train_op != None:
-      rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, loss_ent0, loss_rel0, loss, pred_label, pred, pred_prob, pred_boxes0, pred_boxes, ent, rel, ent0, rel0, rois, ent_class, _ = sess.run([self._losses["rpn_cross_entropy"],
-                                                                          self._losses['rpn_loss_box'],
-                                                                          self._losses['cross_entropy'],
-                                                                          self._losses['loss_box'],
-                                                                          self._losses['ent_cross_entropy'],
-                                                                          self._losses['rel_cross_entropy'],
-                                                                          self._losses['ent_cross_entropy0'],
-                                                                          self._losses['rel_cross_entropy0'],
-                                                                          self._losses['total_loss'],
-                                                                          self._proposal_targets["labels"],
-                                                                          self._predictions["cls_pred"],
-                                                                          self._predictions["cls_prob"],
-                                                                          self._predictions['pred_bbox0_pool5'],
-                                                                          self._predictions['pred_bbox'],
-                                                                          self._predictions['ent_cls_score'],
-                                                                          self._predictions['rel_cls_score'],
-                                                                          self._predictions['ent_cls_score0'],
-                                                                          self._predictions['rel_cls_score0'],
-                                                                          self._predictions['rois'],
-                                                                          self._proposal_targets['partial_entity_class'],
-                                                                          train_op], feed_dict=feed_dict)
+      losses, predictions, proposal_targets, _ = sess.run([self._losses, 
+                                                          self._predictions, 
+                                                          self._proposal_targets,
+                                                          train_op], feed_dict=feed_dict)
     else:
-      rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, loss_ent0, loss_rel0, loss, pred_label, pred, pred_prob, pred_boxes0, pred_boxes, ent, rel, ent0, rel0, rois, ent_class = sess.run([self._losses["rpn_cross_entropy"],
-                                                                          self._losses['rpn_loss_box'],
-                                                                          self._losses['cross_entropy'],
-                                                                          self._losses['loss_box'],
-                                                                          self._losses['ent_cross_entropy'],
-                                                                          self._losses['rel_cross_entropy'],
-                                                                          self._losses['ent_cross_entropy0'],
-                                                                          self._losses['rel_cross_entropy0'],
-                                                                          self._losses['total_loss'],
-                                                                          self._proposal_targets["labels"],
-                                                                          self._predictions["cls_pred"],
-                                                                          self._predictions["cls_prob"],
-                                                                          self._predictions['pred_bbox0_pool5'],
-                                                                          self._predictions['pred_bbox'],
-                                                                          self._predictions['ent_cls_score'],
-                                                                          self._predictions['rel_cls_score'],
-                                                                          self._predictions['ent_cls_score0'],
-                                                                          self._predictions['rel_cls_score0'],
-                                                                          self._predictions['rois'],
-                                                                          self._proposal_targets['partial_entity_class']], feed_dict=feed_dict)
-
-    return rpn_loss_cls, rpn_loss_box, loss_cls, loss_box, loss_ent, loss_rel, loss_ent0, loss_rel0, loss, pred_label, pred, pred_prob, pred_boxes0, pred_boxes, ent, rel, ent0, rel0, rois
+      losses, predictions, proposal_targets = sess.run([self._losses, 
+                                                          self._predictions, 
+                                                          self._proposal_targets], feed_dict=feed_dict)
+    return losses, predictions, proposal_targets
 
   def train_step_with_summary(self, sess, blobs, train_op):
     feed_dict = {self._image: blobs['data'], self._im_info: blobs['im_info'],

@@ -115,6 +115,7 @@ def _sample_rois(all_rois, all_scores, gt_boxes, gt_labels, ent_labels, rel_labe
   fg_inds = np.where(max_overlaps >= cfg.TRAIN.FG_THRESH)[0]
   labels_mask = np.zeros_like(max_overlaps ,dtype=np.float32)
   labels_mask[fg_inds] = 1.0
+  #labels_mask = max_overlaps.astype(np.float32)
   #labels_mask = labels_mask * max_overlaps.astype(np.float32)
 
   # Guard against the case when an image has fewer than fg_rois_per_image
@@ -123,6 +124,7 @@ def _sample_rois(all_rois, all_scores, gt_boxes, gt_labels, ent_labels, rel_labe
                      (max_overlaps >= cfg.TRAIN.BG_THRESH_LO))[0]
   labels[:, bg_inds] = 0
   labels_mask[bg_inds] = - 1.0
+  #labels_mask[bg_inds] = - 1.0 + max_overlaps[bg_inds]
   # Small modification to the original version where we ensure a fixed number of regions are sampled
   #if fg_inds.size > 0 and bg_inds.size > 0:
   #  fg_rois_per_image = min(fg_rois_per_image, fg_inds.size)
