@@ -375,17 +375,13 @@ class SolverWrapper(object):
                 box_deltas = pred_boxes * np.array(cfg.TRAIN.BBOX_NORMALIZE_STDS) + np.array(cfg.TRAIN.BBOX_NORMALIZE_MEANS)
                 pred_boxes = bbox_transform_inv(boxes0, box_deltas)
                 pred_boxes = _clip_boxes(pred_boxes, im)
-                
-                pred_boxes[:, 0] /= im[1]
-                pred_boxes[:, 1] /= im[0]
-                pred_boxes[:, 2] /= im[1]
-                pred_boxes[:, 3] /= im[0]
-                
+
+                # normalize boxes to [0-1]
                 gt_bbox_norm = gt_bbox.copy()
-                gt_bbox_norm[:, 0] /= im[1]
-                gt_bbox_norm[:, 1] /= im[0]
-                gt_bbox_norm[:, 2] /= im[1]
-                gt_bbox_norm[:, 3] /= im[0]
+                for i in range(4):
+                    pred_boxes[:, i] /= im[(i+1)%2]
+                    gt_bbox_norm[:, i] /= im[(i+1)%2]
+                    boxes0[:, i] /= im[(i+1)%2]
                 
                 rpn_results = rpn_test(gt_bbox_norm, boxes0, pred_boxes, gt_ent, gt_rel, predictions)
                 if accum_results == None:
@@ -483,12 +479,12 @@ def print_stat(name, epoch, epoch_iter, lr, accum_results, losses):
     print('>>> rpn_loss_cls: %.6f rpn_loss_box: %.6f loss_box: %.6f' % (losses["rpn_cross_entropy"] / epoch_iter, losses["rpn_loss_box"] / epoch_iter, losses["loss_box"] / epoch_iter))
     print('###gpi loss: %.6f' % (losses["cross_entropy_gpi"] / epoch_iter))
     print('sub_iou: %.4f obj_iou: %.4f sub_kl: %.4f obj_kl: %.4f rpn_overlaps: %.4f' % (sub_iou, obj_iou, sub_kl, obj_kl, accum_results["gpi_overlaps"] / epoch_iter))
-    print('acc: %.4f acc0: %.4f acc1: %.4f acc2: %.4f acc3: %.4f' % (acc, acc0, acc1, acc2, acc3))
-    print('prec0: %.4f prec1: %.4f prec2: %.4f prec3: %.4f' % (prec0, prec1, prec2, prec3))
+    print('acc: %.4f acc0: %.4f  acc1: %.4f  acc2: %.4f  acc3: %.4f' % (acc, acc0, acc1, acc2, acc3))
+    print('            prec0: %.4f prec1: %.4f prec2: %.4f prec3: %.4f' % (prec0, prec1, prec2, prec3))
     print('###baseline loss: %.6f' % (losses["cross_entropy_baseline"] / epoch_iter))
     print('>>> sub_iou_bl: %.4f obj_iou_bl: %.4f sub_kl_bl: %.4f obj_kl_bl: %.4f rpn_overlaps_bl: %.4f' % (sub_iou_bl, obj_iou_bl, sub_kl_bl, obj_kl_bl, accum_results["baseline_overlaps"] / epoch_iter))
-    print('>>> acc_bl: %.4f acc0_bl: %.4f acc1_bl: %.4f acc2_bl: %.4f acc3_bl: %.4f' % (acc_bl, acc0_bl, acc1_bl, acc2_bl, acc3_bl))
-    print('>>> prec0_bl: %.4f prec1_bl: %.4f prec2_bl: %.4f prec3_bl: %.4f' % (prec0_bl, prec1_bl, prec2_bl, prec3_bl))
+    print('>>> acc_bl: %.4f acc0_bl: %.4f  acc1_bl: %.4f  acc2_bl: %.4f  acc3_bl: %.4f' % (acc_bl, acc0_bl, acc1_bl, acc2_bl, acc3_bl))
+    print('>>>                prec0_bl: %.4f prec1_bl: %.4f prec2_bl: %.4f prec3_bl: %.4f' % (prec0_bl, prec1_bl, prec2_bl, prec3_bl))
 
 def get_training_roidb(imdb):
     """Returns a roidb (Region of Interest database) for use in training."""
