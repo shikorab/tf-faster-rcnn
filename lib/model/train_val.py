@@ -406,7 +406,7 @@ class SolverWrapper(object):
                                        proposal_targets["labels"][query_index, :, 0], 
                                        predictions["cls_pred_baseline"][query_index], 
                                        predictions["cls_prob_baseline"][query_index], 
-                                       pred_boxes, blobs['im_info'])
+                                       boxes0, blobs['im_info'])
                     
                     # accumulate results
                     if first_result:
