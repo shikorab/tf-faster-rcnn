@@ -44,13 +44,15 @@ def resnet_arg_scope(is_training=True,
       return arg_sc
 
 class resnetv1(Network):
-  def __init__(self, num_layers=50):
+  def __init__(self, nof_ent_classes, nof_rel_classes, num_layers=50):
     Network.__init__(self)
     self._feat_stride = [16, ]
     self._feat_compress = [1. / float(self._feat_stride[0]), ]
     self._num_layers = num_layers
     self._scope = 'resnet_v1_%d' % num_layers
     self._decide_blocks()
+    self.nof_ent_classes = nof_ent_classes
+    self.nof_rel_classes = nof_rel_classes
 
   def _crop_pool_layer(self, bottom, rois, name):
     with tf.variable_scope(name) as scope:

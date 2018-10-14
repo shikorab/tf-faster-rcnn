@@ -24,8 +24,11 @@ def prepare_roidb(imdb):
   recorded.
   """
   roidb = imdb.roidb
-  if not (imdb.name.startswith('coco')):
+  if imdb.name.startswith('visual_genome'):
     sizes = [[imdb._image_index[i].image.width, imdb._image_index[i].image.height] for i in range(imdb.num_images)]
+  else:
+    sizes = [[imdb.im_metadata[imdb._image_index[i]]["width"], imdb.im_metadata[imdb._image_index[i]]["height"]] for i in range(imdb.num_images)]
+  
   for i in range(len(imdb.image_index)):
     roidb[i]['image'] = imdb.image_path_at(i)
     if not (imdb.name.startswith('coco')):

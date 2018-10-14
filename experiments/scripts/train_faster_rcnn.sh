@@ -15,22 +15,6 @@ EXTRA_ARGS=${array[@]:3:$len}
 EXTRA_ARGS_SLUG=${EXTRA_ARGS// /_}
 
 case ${DATASET} in
-  pascal_voc)
-    TRAIN_IMDB="voc_2007_trainval"
-    TEST_IMDB="voc_2007_test"
-    STEPSIZE="[50000]"
-    ITERS=70000
-    ANCHORS="[8,16,32]"
-    RATIOS="[0.5,1,2]"
-    ;;
-  pascal_voc_0712)
-    TRAIN_IMDB="voc_2007_trainval+voc_2012_trainval"
-    TEST_IMDB="voc_2007_test"
-    STEPSIZE="[80000]"
-    ITERS=110000
-    ANCHORS="[8,16,32]"
-    RATIOS="[0.5,1,2]"
-    ;;
   visual_genome)
     TRAIN_IMDB="visual_genome_train"
     TEST_IMDB="visual_genome_test"
@@ -39,11 +23,11 @@ case ${DATASET} in
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"
     ;;
-  coco)
-    TRAIN_IMDB="coco_2014_train+coco_2014_valminusminival"
-    TEST_IMDB="coco_2014_minival"
-    STEPSIZE="[350000]"
-    ITERS=490000
+  clevr)
+    TRAIN_IMDB="clevr_train"
+    TEST_IMDB="clevr_test"
+    STEPSIZE="[2,4,6,8]"
+    ITERS=200
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"
     ;;

@@ -206,8 +206,8 @@ class Network(object):
       bbox_targets.set_shape([None, 4])
       bbox_inside_weights.set_shape([None, 4])
       bbox_outside_weights.set_shape([None, 4])
-      partial_entity_class.set_shape([None, 96])
-      partial_relation_class.set_shape([None, None, 43])
+      partial_entity_class.set_shape([None, self.nof_ent_classes])
+      partial_relation_class.set_shape([None, None, self.nof_rel_classes])
 
       self._proposal_targets['rois'] = rois
       self._proposal_targets['labels'] = tf.to_int32(labels, name="to_int32")
@@ -292,7 +292,7 @@ class Network(object):
     #pw_fc7 = tf.to_float(self._proposal_targets['partial_relation_class'])
     #pw_fc7 = tf.concat((pw_fc7, tf.transpose(pw_fc7, perm=[1,0,2])), axis=2)
 
-    self.gpi = Gpi()
+    self.gpi = Gpi(self.nof_ent_classes, self.nof_rel_classes)
     pred_node_features, ent_score, rel_score, ent_score0, rel_score0 = self.gpi.predict(fc7, pw_fc7, gt_fc7, gt_pw_fc7)
     #pred_node_features = fc7
     self._predictions['ent_cls_score'] = ent_score
@@ -430,8 +430,8 @@ class Network(object):
       self.ent_cross_entropy0 = ent_cross_entropy0
       
       # relation
-      partial_rel_class = tf.reshape(self._partial_relation_class, (-1, 43))
-      rel_cls_score0 = tf.reshape(rel_cls_score0, (-1, 43))
+      partial_rel_class = tf.reshape(self._partial_relation_class, (-1, self.nof_rel_classes))
+      rel_cls_score0 = tf.reshape(rel_cls_score0, (-1, self.nof_rel_classes))
       rel_ce = tf.nn.softmax_cross_entropy_with_logits_v2(logits=rel_cls_score0, labels=partial_rel_class)
 
       # positive relation
@@ -472,8 +472,8 @@ class Network(object):
 
       partial_relation_class = tf.multiply(tf.to_float(partial_relation_class), expand_mask)
       self.partial_relation_class = partial_relation_class
-      partial_rel_class = tf.reshape(partial_relation_class, (-1, 43))
-      rel_cls_score = tf.reshape(rel_cls_score, (-1, 43))
+      partial_rel_class = tf.reshape(partial_relation_class, (-1, self.nof_rel_classes))
+      rel_cls_score = tf.reshape(rel_cls_score, (-1, self.nof_rel_classes))
       rel_ce = tf.nn.softmax_cross_entropy_with_logits_v2(logits=rel_cls_score, labels=partial_rel_class)
 
       # positive relation
@@ -501,8 +501,8 @@ class Network(object):
       self._losses['ent_cross_entropy0'] = ent_cross_entropy0
       
       #loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 + 0.2 * cross_entropy
-      loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.2 * cross_entropy
-      #loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.2 * cross_entropy + 0.01 * ent_cross_entropy + 0.01 * rel_cross_entropy + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0
+      #loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.2 * cross_entropy
+      loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.2 * cross_entropy + 0.01 * ent_cross_entropy + 0.01 * rel_cross_entropy + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0
       regularization_loss = tf.add_n(tf.losses.get_regularization_losses(), 'regu')
       self._losses['total_loss'] = loss# + regularization_loss
 
@@ -588,9 +588,9 @@ class Network(object):
     self._gt_boxes = tf.placeholder(tf.float32, shape=[None, 4])
     self._gt_labels = tf.placeholder(tf.float32, shape=[None, None, 1])
 
-    self._query = tf.placeholder(tf.float32, shape=[None, 235])
-    self._partial_entity_class = tf.placeholder(tf.float32, shape=[None, 96])
-    self._partial_relation_class = tf.placeholder(tf.float32, shape=[None, None, 43])
+    self._query = tf.placeholder(tf.float32, shape=[None, 2 * self.nof_ent_classes + self.nof_rel_classes])
+    self._partial_entity_class = tf.placeholder(tf.float32, shape=[None, self.nof_ent_classes])
+    self._partial_relation_class = tf.placeholder(tf.float32, shape=[None, None, self.nof_rel_classes])
     self._tag = tag
     
 

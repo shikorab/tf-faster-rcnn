@@ -35,6 +35,8 @@ import cv2
 class vg(imdb):
   def __init__(self, image_set, use_diff=False):
     name = 'visual_genome'
+    self.nof_ent_classes = 96
+    self.nof_rel_classes = 43
     if use_diff:
       name += '_diff'
     imdb.__init__(self, name)

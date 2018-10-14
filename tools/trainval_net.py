@@ -101,8 +101,6 @@ if __name__ == '__main__':
 
   np.random.seed(cfg.RNG_SEED)
   
-  net = resnetv1(num_layers=101)
-
   # train set
   imdb, roidb = combined_roidb(args.imdb_name)
   print('{:d} roidb entries'.format(len(roidb)))
@@ -124,7 +122,8 @@ if __name__ == '__main__':
   cfg.TRAIN.USE_FLIPPED = orgflip
 
 
-  
+  net = resnetv1(imdb.nof_ent_classes, imdb.nof_rel_classes, num_layers=101)
+ 
 
   train_net(net, imdb, roidb, valroidb, output_dir, tb_dir,
             pretrained_model=args.weight,
