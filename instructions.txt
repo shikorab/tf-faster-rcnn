@@ -39,6 +39,22 @@ ln -s /specific/netapp5_2/gamir/DER-Roei/GPIRR/data/clevr/CLEVR_v1.0 CLEVR_v1.0
 cd ../../
 
 
+# download VRD
+cd data
+wget https://cs.stanford.edu/people/ranjaykrishna/referringrelationships/vrd.zip
+unzip vrd.zip
+rm vrd.zip
+cd ,,
+
+# download vg
+cd data
+wget https://cs.stanford.edu/people/ranjaykrishna/referringrelationships/visualgenome.zip
+unzip visualgenome.zip
+rm visualgenome.zip
+cd VisualGenome
+ln -s /specific/netapp5_2/gamir/DER-Roei/SceneGrapher/Data/VisualGenome/data JPEGImages
+cd ..
+
 #run - vg
 ./experiments/scripts/train_faster_rcnn.sh 0 visual_genome res101
 

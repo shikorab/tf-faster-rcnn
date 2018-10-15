@@ -154,7 +154,7 @@ class datarr(imdb):
 
     boxes = np.zeros((num_objs, 4), dtype=np.float32)
     partial_entity_class = np.zeros((num_objs, self.nof_ent_classes), dtype=np.int32)
-    partial_relation_class = np.zeros((num_objs, num_objs, 4), dtype=np.int32)
+    partial_relation_class = np.zeros((num_objs, num_objs, self.nof_rel_classes), dtype=np.int32)
     partial_relation_class_num = np.zeros((num_objs, num_objs, self.nof_rel_classes), dtype=np.int32)
     
     gt_classes = np.zeros((0, num_objs, 1), dtype=np.int32)
@@ -168,6 +168,12 @@ class datarr(imdb):
       boxes[ix] = np.array(seen_objs[obj]["bbox"])[[2,0,3,1]]
       partial_entity_class[ix] = one_hot_obj[seen_objs[obj]["category"]]
       seg_areas[ix] = (boxes[ix][2] - boxes[ix][0]) * (boxes[ix][3] - boxes[ix][1]) 
+    
+    indices = np.where(boxes[:, 2].astype(int) == boxes[:, 0].astype(int))
+    boxes[indices ,2] += 1
+    indices = np.where(boxes[:, 3].astype(int) == boxes[:, 1].astype(int))
+    boxes[indices ,3] += 1
+
     assert (boxes[:, 2] > boxes[:, 0]).all()
     assert (boxes[:, 3]	 > boxes[:, 1]).all()  
     
@@ -181,19 +187,26 @@ class datarr(imdb):
         obj_index = seen_objs.keys().index(str(obj))        
         partial_relation_class[sub_index, obj_index, relation["predicate"]] = 1
         #partial_relation_class_num[sub_index, obj_index] = relation["predicate"]
-    for sub_ix, sub in enumerate(seen_objs):
-        for obj_ix, obj in enumerate(seen_objs):
-            clss = partial_relation_class[sub_ix, obj_ix] 
-            rel_class = clss[0] + clss[1] * 2 + clss[2] * 4 + clss[3] * 8
-            partial_relation_class_num[sub_ix, obj_ix, rel_class] = 1
+    
+    #for sub_ix, sub in enumerate(seen_objs):
+    #    for obj_ix, obj in enumerate(seen_objs):
+    #        clss = partial_relation_class[sub_ix, obj_ix] 
+    #        rel_class = clss[0] + clss[1] * 2 + clss[2] * 4 + clss[3] * 8
+    #        partial_relation_class_num[sub_ix, obj_ix, rel_class] = 1
 
     for _, relation in enumerate(anot):       
         sub = relation["subject"]
         obj = relation["object"]
+        sub_index = seen_objs.keys().index(str(sub))
+        obj_index = seen_objs.keys().index(str(obj)) 
+        if sub_index == obj_index:
+            continue
+
         sub_class = sub["category"]
         obj_class = obj["category"]
         rel_class = relation["predicate"]
         rel_str = str(sub_class)  + "_" + str(rel_class) + "_" + str(obj_class)
+        found = False
         if not rel_str in seen_rel:
             query_gt_classes = np.zeros((1, num_objs, 1), dtype=np.int32)
             query_overlaps = np.zeros((1, num_objs, self.num_classes), dtype=np.int64)
@@ -216,12 +229,27 @@ class datarr(imdb):
                         query_gt_classes[0, obj_ix, 0] = 2
                         query_overlaps[0, obj_ix, 2] = 1
                         query_overlaps[0, obj_ix, 3] = 0
-			    
+                        found = True
+            
+            assert found
             gt_classes = np.concatenate((gt_classes, query_gt_classes), axis=0)
             overlaps = np.concatenate((overlaps, query_overlaps), axis=0)
             query = np.concatenate((one_hot_obj[sub_class], one_hot_rel[rel_class], one_hot_obj[obj_class]), axis=0)
             query = query.reshape([1, -1])
             queries = np.concatenate((queries, query), axis=0)
+            
+    # for the partial sence-graph training - use single relation
+    for sub_ix, sub in enumerate(seen_objs):
+        for obj_ix, obj in enumerate(seen_objs):
+            relation = partial_relation_class[sub_ix, obj_ix]
+            sumrel = np.sum(relation)
+            if sumrel > 1:
+                index = np.random.choice(relation.shape[0], 1, p=relation/sumrel)
+                partial_relation_class[sub_ix, obj_ix] = np.zeros_like(partial_relation_class[sub_ix, obj_ix])
+                partial_relation_class[sub_ix, obj_ix, index] = 1
+
+    nof_relations = np.sum(partial_relation_class, axis=2)
+    assert (nof_relations <= 1).all()
 
     return {'boxes': boxes,
             'gt_classes': gt_classes,
@@ -230,7 +258,7 @@ class datarr(imdb):
             'seg_areas': seg_areas,
             'query' : queries,
             'partial_entity_class' : partial_entity_class,
-            'partial_relation_class' : partial_relation_class_num,
+            'partial_relation_class' : partial_relation_class,
             'orig_image': None}
 
   def _get_comp_id(self):
@@ -273,4 +301,4 @@ class datarr(imdb):
     self.im_metadata = json.load(open(self._im_metadata_path))
     self.annotations = json.load(open(self._annotations_path))
     print("done loading data " + self._image_set)
-    return self.im_metadata
+    return [i for i in self.im_metadata if i in self.annotations] 

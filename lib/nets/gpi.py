@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 class Gpi(object):
-    def __init__(self, nof_ent_classes, nof_rel_classes, nof_node_features=516, nof_relation_features=516, rnn_steps=1, layers = [516, 516], gpi_type="FeatureAttention"):
+    def __init__(self, nof_ent_classes, nof_rel_classes, nof_node_features=1024, nof_relation_features=1024, rnn_steps=1, layers = [516, 516], gpi_type="FeatureAttention"):
         self.nof_node_features = nof_node_features
         self.nof_relation_features = nof_relation_features
         self.nof_ent_classes = nof_ent_classes
@@ -105,7 +105,7 @@ class Gpi(object):
             self.object_all_features = [node_features, expand_graph[0], self.object_ngbrs_phi_all]
             obj_delta = self.nn(features=self.object_all_features, layers=self.layers, out=self.nof_node_features, scope_name="nn_obj")
             obj_forget_gate = self.nn(features=self.object_all_features, layers=self.layers, out=self.nof_node_features, scope_name="nn_obj_forgate", last_activation=tf.nn.sigmoid)
-            pred_node_features = obj_delta + obj_forget_gate * node_features
+            pred_node_features = obj_delta# + obj_forget_gate * node_features
 
             ##
             # relation score

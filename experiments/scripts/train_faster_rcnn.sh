@@ -23,10 +23,26 @@ case ${DATASET} in
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"
     ;;
+  visualgenome)
+    TRAIN_IMDB="visualgenome_train"
+    TEST_IMDB="visualgenome_test"
+    STEPSIZE="[2,4,6,8]"
+    ITERS=200
+    ANCHORS="[4,8,16,32]"
+    RATIOS="[0.5,1,2]"
+    ;;
   clevr)
     TRAIN_IMDB="clevr_train"
     TEST_IMDB="clevr_test"
     STEPSIZE="[2,4,6,8]"
+    ITERS=200
+    ANCHORS="[4,8,16,32]"
+    RATIOS="[0.5,1,2]"
+    ;;
+  vrd)
+    TRAIN_IMDB="vrd_train"
+    TEST_IMDB="vrd_test"
+    STEPSIZE="[10,20,30,40]"
     ITERS=200
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"
@@ -62,7 +78,7 @@ if [ ! -f ${NET_FINAL}.index ]; then
       --set ANCHOR_SCALES ${ANCHORS} ANCHOR_RATIOS ${RATIOS} \
       TRAIN.STEPSIZE ${STEPSIZE} ${EXTRA_ARGS}
   else
-    CUDA_VISIBLE_DEVICES=${GPU_ID} time python ./tools/trainval_net.py \
+    CUDA_VISIBLE_DEVICES=${GPU_ID} time python -m pdb ./tools/trainval_net.py \
       --weight data/imagenet_weights/${NET}.ckpt \
       --imdb ${TRAIN_IMDB} \
       --imdbval ${TEST_IMDB} \

@@ -347,7 +347,7 @@ class SolverWrapper(object):
 
             blobs, new_epoch = data_layer.forward()
             
-            if new_epoch:
+            if new_epoch and epoch_iter != 0.0:
                 print_stat(name, epoch, epoch_iter, lr, accum_results, accum_losses)
                 return
         

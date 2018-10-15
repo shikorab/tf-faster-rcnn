@@ -11,10 +11,10 @@ from __future__ import division
 from __future__ import print_function
 
 __sets = {}
-from datasets.pascal_voc import pascal_voc
-#from datasets.coco import coco
 from datasets.vg import vg
 from datasets.clevr import clevr
+from datasets.visualgenome import visualgenome
+from datasets.vrd import vrd
 
 import numpy as np
 
@@ -27,6 +27,16 @@ for split in ['train', 'validation', 'test']:
 for split in ['train', 'val', 'test']:
   name = 'clevr_{}'.format(split)
   __sets[name] = (lambda split=split: clevr(split))
+
+# Set up vg_<split>
+for split in ['train', 'validation', 'test']:
+  name = 'visualgenome_{}'.format(split)
+  __sets[name] = (lambda split=split: visualgenome(split))
+
+# Set up vrd_<split>
+for split in ['train', 'validation', 'test']:
+  name = 'vrd_{}'.format(split)
+  __sets[name] = (lambda split=split: vrd(split))
 
 def get_imdb(name):
   """Get an imdb (image database) by name."""
