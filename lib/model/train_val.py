@@ -48,7 +48,7 @@ class SolverWrapper(object):
     A wrapper class for the training process
   """
 
-    def __init__(self, sess, network, imdb, roidb, valroidb, output_dir, tbdir, pretrained_model=None):
+    def __init__(self, sess, network, imdb, roidb, valroidb, output_dir = "", tbdir = "", pretrained_model=None):
         self.net = network
         self.imdb = imdb
         self.roidb = roidb
@@ -261,7 +261,7 @@ class SolverWrapper(object):
             os.remove(str(sfile_meta))
             ss_paths.remove(sfile)
 
-    def train_model(self, sess, max_iters):
+    def train_model(self, sess, max_iters, just_test = False):
         # Build data layers for both training and validation set
         self.data_layer = RoIDataLayer(self.roidb, self.imdb.num_classes)
         self.data_layer_val = RoIDataLayer(self.valroidb, self.imdb.num_classes, random=True)
@@ -310,11 +310,14 @@ class SolverWrapper(object):
                 sess.run(tf.assign(lr, rate))
                 next_stepsize = stepsizes.pop()
             
-            self.run_epoch(iter, self.data_layer, "train", sess, lr, train_op)
-            self.run_epoch(iter, self.data_layer_val, "validation", sess, lr, None)
+            if not just_test:
+                self.run_epoch(iter, self.data_layer, "train", sess, lr, train_op)
+                self.run_epoch(iter, self.data_layer_val, "validation", sess, lr, None)
+            else:
+                self.run_epoch(iter, self.data_layer_val, "test", sess, lr, None) 
 
             # Snapshotting
-            if iter % cfg.TRAIN.SNAPSHOT_ITERS == 0:
+            if iter % cfg.TRAIN.SNAPSHOT_ITERS == 0 and not just_test:
                 last_snapshot_iter = iter
                 ss_path, np_path = self.snapshot(sess, iter)
                 np_paths.append(np_path)
@@ -329,7 +332,7 @@ class SolverWrapper(object):
 
             iter += 1
 
-        if last_snapshot_iter != iter - 1:
+        if last_snapshot_iter != iter - 1 and not just_test:
             self.snapshot(sess, iter - 1)
 
         self.writer.close()
@@ -493,7 +496,7 @@ def get_training_roidb(imdb):
         imdb.append_flipped_images()
         print('done')
 
-    print('Preparing training data...')
+    print('Preparing data...')
     rdl_roidb.prepare_roidb(imdb)
     print('done')
 
@@ -527,7 +530,7 @@ def filter_roidb(roidb):
 
 def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
               pretrained_model=None,
-              max_iters=40000):
+              max_iters=100, just_test=False):
     """Train a Faster R-CNN network."""
     #roidb = filter_roidb(roidb)
     #valroidb = filter_roidb(valroidb)
@@ -539,7 +542,7 @@ def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
         sw = SolverWrapper(sess, network, imdb, roidb, valroidb, output_dir, tb_dir,
                            pretrained_model=pretrained_model)
         print('Solving...')
-        sw.train_model(sess, max_iters)
+        sw.train_model(sess, max_iters,just_test)
         print('done solving')
 
 
