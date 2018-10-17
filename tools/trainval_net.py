@@ -21,6 +21,7 @@ import tensorflow as tf
 from nets.vgg16 import vgg16
 from nets.resnet_v1 import resnetv1
 from nets.mobilenet_v1 import mobilenetv1
+from random import shuffle
 
 def parse_args():
   """
@@ -73,19 +74,13 @@ def combined_roidb(imdb_names):
     roidb = get_training_roidb(imdb)
     return roidb, imdb
 
-  #roidbs = [get_roidb(s) for s in imdb_names.split('+')]
   roidb, imdb = get_roidb(imdb_names)
-  #if len(roidbs) > 1:
-  #  for r in roidbs[1:]:
-  #    roidb.extend(r)
-  #  tmp = get_imdb(imdb_names.split('+')[1])
-  #  imdb = datasets.imdb.imdb(imdb_names, tmp.classes)
-  #else:
-  #  imdb = get_imdb(imdb_names)
   return imdb, roidb
 
 
 if __name__ == '__main__':
+  VAL_PERCENT = 0.1
+
   args = parse_args()
 
   print('Called with args:')
@@ -103,7 +98,12 @@ if __name__ == '__main__':
   
   # train set
   imdb, roidb = combined_roidb(args.imdb_name)
-  print('{:d} roidb entries'.format(len(roidb)))
+  shuffle(roidb)
+  thresh = int(len(roidb) * (1. - VAL_PERCENT))
+  trainroidb = roidb[:thresh]
+  valroidb = roidb[thresh:]
+
+  print('{:d} train roidb entries'.format(len(trainroidb)))
 
   # output directory where the models are saved
   output_dir = get_output_dir(imdb, args.tag)
@@ -116,8 +116,6 @@ if __name__ == '__main__':
   # also add the validation set, but with no flipping images
   orgflip = cfg.TRAIN.USE_FLIPPED
   cfg.TRAIN.USE_FLIPPED = False
-  _, valroidb = combined_roidb(args.imdbval_name)
-  #valroidb = roidb
   print('{:d} validation roidb entries'.format(len(valroidb)))
   cfg.TRAIN.USE_FLIPPED = orgflip
 
@@ -125,6 +123,6 @@ if __name__ == '__main__':
   net = resnetv1(imdb.nof_ent_classes, imdb.nof_rel_classes, num_layers=101)
  
 
-  train_net(net, imdb, roidb, valroidb, output_dir, tb_dir,
+  train_net(net, imdb, trainroidb, valroidb, output_dir, tb_dir,
             pretrained_model=args.weight,
             max_iters=args.max_iters)

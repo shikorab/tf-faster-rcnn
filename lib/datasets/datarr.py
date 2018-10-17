@@ -100,21 +100,9 @@ class datarr(imdb):
 
     This function loads/saves from/to a cache file to speed up future calls.
     """
-    cache_file = os.path.join(self.cache_path, self.name + '_gt_roidb.pkl')
-    if os.path.exists(cache_file) and False:
-      with open(cache_file, 'rb') as fid:
-        try:
-          roidb = pickle.load(fid)
-        except:
-          roidb = pickle.load(fid, encoding='bytes')
-      print('{} gt roidb loaded from {}'.format(self.name, cache_file))
-      return roidb
-
     gt_roidb = [self._load_annotation(index)
                 for index in self.image_index]
-    #with open(cache_file, 'wb') as fid:
-    #  pickle.dump(gt_roidb, fid, pickle.HIGHEST_PROTOCOL)
-    #print('wrote gt roidb to {}'.format(cache_file))
+
 
     return gt_roidb
 
@@ -155,7 +143,6 @@ class datarr(imdb):
     boxes = np.zeros((num_objs, 4), dtype=np.float32)
     partial_entity_class = np.zeros((num_objs, self.nof_ent_classes), dtype=np.int32)
     partial_relation_class = np.zeros((num_objs, num_objs, self.nof_rel_classes), dtype=np.int32)
-    partial_relation_class_num = np.zeros((num_objs, num_objs, self.nof_rel_classes), dtype=np.int32)
     
     gt_classes = np.zeros((0, num_objs, 1), dtype=np.int32)
     overlaps = np.zeros((0, num_objs, self.num_classes), dtype=np.int64)
@@ -186,13 +173,7 @@ class datarr(imdb):
         sub_index = seen_objs.keys().index(str(sub))
         obj_index = seen_objs.keys().index(str(obj))        
         partial_relation_class[sub_index, obj_index, relation["predicate"]] = 1
-        #partial_relation_class_num[sub_index, obj_index] = relation["predicate"]
     
-    #for sub_ix, sub in enumerate(seen_objs):
-    #    for obj_ix, obj in enumerate(seen_objs):
-    #        clss = partial_relation_class[sub_ix, obj_ix] 
-    #        rel_class = clss[0] + clss[1] * 2 + clss[2] * 4 + clss[3] * 8
-    #        partial_relation_class_num[sub_ix, obj_ix, rel_class] = 1
 
     for _, relation in enumerate(anot):       
         sub = relation["subject"]

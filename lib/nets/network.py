@@ -434,18 +434,11 @@ class Network(object):
       rel_cls_score0 = tf.reshape(rel_cls_score0, (-1, self.nof_rel_classes))
       rel_ce = tf.nn.softmax_cross_entropy_with_logits_v2(logits=rel_cls_score0, labels=partial_rel_class)
 
-      # positive relation
-      nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1])) + 1.0
+      nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class)) + 1.0
       self.nof_rels = nof_rels
-      rels_for_loss = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1], axis=1))
+      rels_for_loss = tf.to_float(tf.reduce_sum(partial_rel_class, axis=1))
       self.rels_for_loss = rels_for_loss
-      rel_cross_entropy0 = tf.reduce_sum(tf.multiply(rels_for_loss, rel_ce))# / nof_rels
-
-      # negative relation
-      nof_neg_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,-1])) + 1.0
-      factor = 0.3 * tf.to_float(nof_rels) / nof_neg_rels
-      neg_rels_for_loss = factor * tf.to_float(partial_rel_class[:,-1])
-      rel_cross_entropy0 += tf.reduce_sum(tf.multiply(neg_rels_for_loss, rel_ce))# / nof_neg_rels
+      rel_cross_entropy0 = tf.reduce_sum(tf.multiply(rels_for_loss, rel_ce))
 
       ## partial scene-graph loss - gpi with rpn
       partial_entity_class = self._proposal_targets['partial_entity_class']
@@ -476,19 +469,12 @@ class Network(object):
       rel_cls_score = tf.reshape(rel_cls_score, (-1, self.nof_rel_classes))
       rel_ce = tf.nn.softmax_cross_entropy_with_logits_v2(logits=rel_cls_score, labels=partial_rel_class)
 
-      # positive relation
-      nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1])) + 1.0
+      nof_rels = tf.to_float(tf.reduce_sum(partial_rel_class)) + 1.0
       self.nof_rels = nof_rels
-      rels_for_loss = tf.to_float(tf.reduce_sum(partial_rel_class[:,:-1], axis=1))
+      rels_for_loss = tf.to_float(tf.reduce_sum(partial_rel_class, axis=1))
       self.rels_for_loss = rels_for_loss
-      rel_cross_entropy = tf.reduce_sum(tf.multiply(rels_for_loss, rel_ce))# / nof_rels
-
-      # negative relation
-      nof_neg_rels = tf.to_float(tf.reduce_sum(partial_rel_class[:,-1])) + 1.0
-      factor = 0.3 * tf.to_float(nof_rels) / nof_neg_rels
-      neg_rels_for_loss = factor * tf.to_float(partial_rel_class[:,-1])
-      rel_cross_entropy += tf.reduce_sum(tf.multiply(neg_rels_for_loss, rel_ce))# / nof_neg_rels
-
+      rel_cross_entropy = tf.reduce_sum(tf.multiply(rels_for_loss, rel_ce))
+  
       ## sum losses
       self._losses['cross_entropy_gpi'] = cross_entropy_gpi
       self._losses['cross_entropy_baseline'] = cross_entropy_baseline

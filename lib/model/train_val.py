@@ -529,8 +529,8 @@ def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
               pretrained_model=None,
               max_iters=40000):
     """Train a Faster R-CNN network."""
-    roidb = filter_roidb(roidb)
-    valroidb = filter_roidb(valroidb)
+    #roidb = filter_roidb(roidb)
+    #valroidb = filter_roidb(valroidb)
 
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
@@ -563,8 +563,8 @@ def rpn_test(gt_bbox, pred_boxes0, pred_boxes, gt_ent, gt_rel, predictions):
     ent_accuracy = np.sum(np.multiply(pred_ent, gt_ent)) / np.sum(gt_ent)
     
     pred_rel = predictions['rel_cls_score']
-    pred_rel = softmax(pred_rel[overlaps_assign,:][:,overlaps_assign])
-    rel_accuracy = np.sum(np.multiply(pred_rel[:,:,:-1], gt_rel[:,:,:-1])) / np.sum(gt_rel[:,:,:-1])
+    pred_rel = softmax(pred_rel[overlaps_assign,:][:,overlaps_assign]) 
+    rel_accuracy = np.sum(np.multiply(pred_rel, gt_rel)) / np.sum(gt_rel)
     
     pred_ent0 = predictions['ent_cls_score0']
     pred_ent0 = softmax(pred_ent0)
@@ -572,7 +572,7 @@ def rpn_test(gt_bbox, pred_boxes0, pred_boxes, gt_ent, gt_rel, predictions):
     
     pred_rel0 = predictions['rel_cls_score0']
     pred_rel0 = softmax(pred_rel0)
-    rel0_accuracy = np.sum(np.multiply(pred_rel0[:,:,:-1], gt_rel[:,:,:-1])) / np.sum(gt_rel[:,:,:-1])
+    rel0_accuracy = np.sum(np.multiply(pred_rel0, gt_rel)) / np.sum(gt_rel)
 
     results = {}
     results["baseline_overlaps"] = np.mean(max_overlaps0)
