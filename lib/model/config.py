@@ -160,6 +160,8 @@ __C.TRAIN.RPN_POSITIVE_WEIGHT = -1.0
 # For COCO, setting USE_ALL_GT to False will exclude boxes that are flagged as ''iscrowd''
 __C.TRAIN.USE_ALL_GT = True
 
+__C.TRAIN.FREEZE_DETECTOR = False
+
 #
 # Testing options
 #
@@ -207,6 +209,8 @@ __C.TEST.MODE = 'nms'
 
 # Only useful when TEST.MODE is 'top', specifies the number of top proposals to select
 __C.TEST.RPN_TOP_N = 5000
+
+__C.SG_AS_FEATURES = False
 
 #
 # ResNet options
@@ -290,6 +294,8 @@ __C.ANCHOR_RATIOS = [0.5,1,2]
 # Number of filters for the RPN layer
 __C.RPN_CHANNELS = 512
 
+
+    
 
 def get_output_dir(imdb, weights_filename):
   """Return the directory where experimental artifacts are placed.

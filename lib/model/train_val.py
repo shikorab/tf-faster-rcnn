@@ -299,6 +299,7 @@ class SolverWrapper(object):
         stepsizes.append(max_iters)
         stepsizes.reverse()
         next_stepsize = stepsizes.pop()
+        best_result = 0.0
 
         sess.run(tf.assign(lr, rate))
 
@@ -312,9 +313,10 @@ class SolverWrapper(object):
             
             if not just_test:
                 self.run_epoch(iter, self.data_layer, "train", sess, lr, train_op)
-                self.run_epoch(iter, self.data_layer_val, "validation", sess, lr, None)
+                result = self.run_epoch(iter, self.data_layer_val, "validation", sess, lr, None)
             else:
                 self.run_epoch(iter, self.data_layer_val, "test", sess, lr, None) 
+                result = - 1.0
 
             # Snapshotting
             if iter % cfg.TRAIN.SNAPSHOT_ITERS == 0 and not just_test:
@@ -329,6 +331,11 @@ class SolverWrapper(object):
                         self.remove_snapshot(np_paths, ss_paths)
                 except:
                     print("failed to remove snapshot")
+            
+            if result > best_result:
+                self.snapshot(sess, 0)
+                best_result = result
+            print(">>> best_result %f" % (best_result))
 
             iter += 1
 
@@ -352,8 +359,10 @@ class SolverWrapper(object):
             
             if new_epoch and epoch_iter != 0.0:
                 print_stat(name, epoch, epoch_iter, lr, accum_results, accum_losses)
-                return
-        
+                sub_iou = float(accum_results['sub_iou']) / accum_results['total']
+                obj_iou = float(accum_results['obj_iou']) / accum_results['total']
+                return (sub_iou + obj_iou) / 2
+            
             if blobs["query"].shape[0] == 0 or blobs["gt_boxes"].shape[0] == 0:
                continue 
 
@@ -439,6 +448,7 @@ class SolverWrapper(object):
             # Display training information
             if (epoch == 1 and int(epoch_iter) % (cfg.TRAIN.DISPLAY) == 0) or (int(epoch_iter) % (10000) == 0):
                 print_stat(name, epoch, epoch_iter, lr, accum_results, accum_losses)
+          
 
 
 

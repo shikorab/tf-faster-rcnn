@@ -86,7 +86,7 @@ class datarr(imdb):
     return image_path
 
   def _get_widths(self):
-    return [m["width"] for m in self.im_metadata]
+    return [self.im_metadata[m]["width"] for m in self.im_metadata]
 
   def _get_default_path(self):
     """

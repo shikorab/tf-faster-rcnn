@@ -19,7 +19,7 @@ case ${DATASET} in
     TRAIN_IMDB="visual_genome_train"
     TEST_IMDB="visual_genome_test"
     STEPSIZE="[2,4,6,8]"
-    ITERS=200
+    ITERS=20
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"
     ;;
@@ -27,7 +27,7 @@ case ${DATASET} in
     TRAIN_IMDB="visualgenome_train"
     TEST_IMDB="visualgenome_test"
     STEPSIZE="[2,4,6,8]"
-    ITERS=200
+    ITERS=20
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"
     ;;
@@ -35,7 +35,7 @@ case ${DATASET} in
     TRAIN_IMDB="clevr_train"
     TEST_IMDB="clevr_test"
     STEPSIZE="[2,4,6,8]"
-    ITERS=200
+    ITERS=20
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"
     ;;
@@ -43,7 +43,7 @@ case ${DATASET} in
     TRAIN_IMDB="vrd_train"
     TEST_IMDB="vrd_test"
     STEPSIZE="[10,20,30,40]"
-    ITERS=200
+    ITERS=50
     ANCHORS="[4,8,16,32]"
     RATIOS="[0.5,1,2]"
     ;;
@@ -90,4 +90,4 @@ if [ ! -f ${NET_FINAL}.index ]; then
   fi
 fi
 
-./experiments/scripts/test_faster_rcnn.sh $@
+#./experiments/scripts/test_faster_rcnn.sh $@

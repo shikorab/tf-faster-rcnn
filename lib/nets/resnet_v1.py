@@ -141,7 +141,7 @@ class resnetv1(Network):
 
     return net_conv
 
-  def _head_to_tail(self, pool5, pw_pool5, is_training, name="", reuse=None):
+  def _head_to_tail(self, pool5, pw_pool5, is_training, name="", reuse=None, ent_features_size=512, rel_features_size=512):
     with slim.arg_scope(resnet_arg_scope(is_training=is_training)):
       fc7, _ = resnet_v1.resnet_v1(pool5,
                                    self._blocks[-1:],
@@ -149,16 +149,14 @@ class resnetv1(Network):
                                    include_root_block=False,
                                    reuse=reuse,
                                    scope=self._scope + "__new")
-      #fc7 = resnet_utils.conv2d_same(fc7, 1024, 1, 1, scope="fc7_conv" + name )
-      fc7 = tf.layers.conv2d(fc7, 512, 1, reuse=reuse)
+      fc7 = tf.layers.conv2d(fc7, ent_features_size, 1, reuse=reuse)
       pw_fc7, _ = resnet_v1.resnet_v1(pw_pool5,
                                    self._blocks[-1:],
                                    global_pool=False,
                                    include_root_block=False,
                                    reuse=reuse,
                                    scope=self._scope + '_pw')
-      pw_fc7 = tf.layers.conv2d(pw_fc7, 512, 1, reuse=reuse, name="pw")
-      #pw_fc7 = resnet_utils.conv2d_same(pw_fc7, 1024, 1, 1, scope="pw_fc7_conv" + name)
+      pw_fc7 = tf.layers.conv2d(pw_fc7, rel_features_size, 1, reuse=reuse, name="pw")
       # average pooling done by reduce_mean
       fc7 = tf.reduce_mean(fc7, axis=[1, 2])
       pw_fc7 = tf.reduce_mean(pw_fc7, axis=[1, 2])
@@ -195,12 +193,6 @@ class resnetv1(Network):
     variables_to_restore = []
 
     for v in variables:
-      # exclude the first conv layer to swap RGB to BGR
-      #if v.name == (self._scope + '/conv1/weights:0'):
-      #  self._variables_to_fix[v.name] = v
-      #  continue
-      #if "__new" in v.name:
-      #    continue
       if v.name.split(':')[0] in var_keep_dic:
         #print('Variables restored: %s' % v.name)
         variables_to_restore.append(v)

@@ -22,6 +22,7 @@ from nets.vgg16 import vgg16
 from nets.resnet_v1 import resnetv1
 from nets.mobilenet_v1 import mobilenetv1
 from random import shuffle
+import random
 
 def parse_args():
   """
@@ -95,6 +96,7 @@ if __name__ == '__main__':
   pprint.pprint(cfg)
 
   np.random.seed(cfg.RNG_SEED)
+  random.seed(cfg.RNG_SEED)
   
   # train set
   imdb, roidb = combined_roidb(args.imdb_name)
@@ -102,6 +104,9 @@ if __name__ == '__main__':
   thresh = int(len(roidb) * (1. - VAL_PERCENT))
   trainroidb = roidb[:thresh]
   valroidb = roidb[thresh:]
+  val_im = [r["image"] for r in valroidb]
+  # filter val images from train (might be the flipped version)
+  trainroidb = [r for r in trainroidb if r["image"] not in val_im]
 
   print('{:d} train roidb entries'.format(len(trainroidb)))
 

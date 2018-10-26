@@ -246,6 +246,7 @@ class Network(object):
       self._anchor_length = anchor_length
 
   def _build_network(self, is_training=True):
+    freeze_detector = cfg.TRAIN.FREEZE_DETECTOR
     # select initializers
     if cfg.TRAIN.TRUNCATED:
       initializer = tf.truncated_normal_initializer(mean=0.0, stddev=0.01)
@@ -254,12 +255,12 @@ class Network(object):
       initializer = tf.random_normal_initializer(mean=0.0, stddev=0.01)
       initializer_bbox = tf.random_normal_initializer(mean=0.0, stddev=0.001)
 
-    net_conv = self._image_to_head(is_training)
+    net_conv = self._image_to_head(is_training and not freeze_detector)
     with tf.variable_scope(self._scope, self._scope):
       # build the anchors for the image
       self._anchor_component()
       # region proposal network
-      rois = self._region_proposal(net_conv, is_training, initializer)
+      rois = self._region_proposal(net_conv, is_training and not freeze_detector, initializer)
       # region of interest pooling
       if cfg.POOLING_MODE == 'crop':
         pool5, pw_pool5 = self._crop_pool_layer(net_conv, rois, "pool5")
@@ -269,31 +270,40 @@ class Network(object):
       else:
         raise NotImplementedError
     self._predictions["pool5"] = pool5
-    fc7, pw_fc7 = self._head_to_tail(pool5, pw_pool5, is_training)
-    gt_fc7, gt_pw_fc7 = self._head_to_tail(gt_pool5, gt_pw_pool5, is_training, name="gt", reuse=True)
-    #fc7 = pool5
-    #pw_fc7 = pw_pool5
-    #fc7 = tf.reduce_mean(fc7, axis=[1, 2])
-    #pw_fc7 = tf.reduce_mean(pw_fc7, axis=[1, 2])
+    if cfg.SG_AS_FEATURES:
+        ent_features_size = self.nof_ent_classes
+        rel_features_size = self.nof_rel_classes
+        ent_features_size_total = self.nof_ent_classes
+        rel_features_size_total = self.nof_rel_classes
+    else:
+        ent_features_size = 512
+        rel_features_size = 512
+        ent_features_size_total = 516
+        rel_features_size_total = 516
+
+    fc7, pw_fc7 = self._head_to_tail(pool5, pw_pool5, is_training, ent_features_size=ent_features_size, rel_features_size=rel_features_size)
+    gt_fc7, gt_pw_fc7 = self._head_to_tail(gt_pool5, gt_pw_pool5, is_training, name="gt", reuse=True, ent_features_size=ent_features_size, rel_features_size=rel_features_size)
 
     # GPI
-    fc7 = tf.concat((fc7, self._predictions['pred_bbox0_pool5']), axis=1)
-    pw_fc7 = tf.concat((pw_fc7, self._predictions['pw_pred_bbox0_pool5']), axis=1)
-    N = tf.slice(tf.shape(fc7), [0], [1])
-    shape = tf.concat((N, tf.shape(fc7)), 0)
-    pw_fc7 = tf.reshape(pw_fc7, shape)
+    if not cfg.SG_AS_FEATURES:
+        fc7 = tf.concat((fc7, self._predictions['pred_bbox0_pool5']), axis=1)
+        pw_fc7 = tf.concat((pw_fc7, self._predictions['pw_pred_bbox0_pool5']), axis=1)
     
+    N = tf.slice(tf.shape(fc7), [0], [1])
+    M = tf.slice(tf.shape(pw_fc7), [1], [1])
+    shape = tf.concat((N, N, M), 0)
+    pw_fc7 = tf.reshape(pw_fc7, shape)
+    pw_fc7.set_shape((None, None, rel_features_size_total)) 
 
     N = tf.slice(tf.shape(gt_fc7), [0], [1])
-    shape = tf.concat((N, tf.shape(gt_fc7)), 0)
+    M = tf.slice(tf.shape(gt_pw_fc7), [1], [1])
+    shape = tf.concat((N, N, M), 0)
     gt_pw_fc7 = tf.reshape(gt_pw_fc7, shape)
-    
-    #fc7 = tf.to_float(self._proposal_targets['partial_entity_class'])
-    #pw_fc7 = tf.to_float(self._proposal_targets['partial_relation_class'])
-    #pw_fc7 = tf.concat((pw_fc7, tf.transpose(pw_fc7, perm=[1,0,2])), axis=2)
+    gt_pw_fc7.set_shape((None, None, rel_features_size)) 
 
-    self.gpi = Gpi(self.nof_ent_classes, self.nof_rel_classes)
+    self.gpi = Gpi(self.nof_ent_classes, self.nof_rel_classes, sg_as_features=cfg.SG_AS_FEATURES, phase_ph = self._phase_ph)
     pred_node_features, ent_score, rel_score, ent_score0, rel_score0 = self.gpi.predict(fc7, pw_fc7, gt_fc7, gt_pw_fc7)
+    
     #pred_node_features = fc7
     self._predictions['ent_cls_score'] = ent_score
     self._predictions['rel_cls_score'] = rel_score
@@ -511,20 +521,12 @@ class Network(object):
     rpn_bbox_pred = slim.conv2d(rpn, self._num_anchors * 4, [1, 1], trainable=is_training,
                                 weights_initializer=initializer,
                                 padding='VALID', activation_fn=None, scope='rpn_bbox_pred')
-    if is_training:
-      _rois, roi_scores = self._proposal_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
-      rpn_labels = self._anchor_target_layer(rpn_cls_score, "anchor")
-      # Try to have a deterministic order for the computing graph, for reproducibility
-      with tf.control_dependencies([rpn_labels]):
-        rois, _ = self._proposal_target_layer(_rois, roi_scores, "rpn_rois")
-    else:
-      if cfg.TEST.MODE == 'nms':
-        rois, _ = self._proposal_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
-      elif cfg.TEST.MODE == 'top':
-        rois, _ = self._proposal_top_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
-      else:
-        raise NotImplementedError
-
+    _rois, roi_scores = self._proposal_layer(rpn_cls_prob, rpn_bbox_pred, "rois")
+    rpn_labels = self._anchor_target_layer(rpn_cls_score, "anchor")
+    # Try to have a deterministic order for the computing graph, for reproducibility
+    with tf.control_dependencies([rpn_labels]):
+      rois, _ = self._proposal_target_layer(_rois, roi_scores, "rpn_rois")
+    
     self._predictions["rpn"] = rpn
     self._predictions["rpn_cls_score"] = rpn_cls_score
     self._predictions["rpn_cls_score_reshape"] = rpn_cls_score_reshape
@@ -577,6 +579,7 @@ class Network(object):
     self._query = tf.placeholder(tf.float32, shape=[None, 2 * self.nof_ent_classes + self.nof_rel_classes])
     self._partial_entity_class = tf.placeholder(tf.float32, shape=[None, self.nof_ent_classes])
     self._partial_relation_class = tf.placeholder(tf.float32, shape=[None, None, self.nof_rel_classes])
+    self._phase_ph = tf.placeholder(tf.bool)
     self._tag = tag
     
 
@@ -684,11 +687,13 @@ class Network(object):
                  self._partial_entity_class: blobs['partial_entity_class'], self._partial_relation_class: blobs['partial_relation_class']}
     
     if train_op != None:
+      feed_dict[self._phase_ph] = True
       losses, predictions, proposal_targets, _ = sess.run([self._losses, 
                                                           self._predictions, 
                                                           self._proposal_targets,
                                                           train_op], feed_dict=feed_dict)
     else:
+      feed_dict[self._phase_ph] = False
       losses, predictions, proposal_targets = sess.run([self._losses, 
                                                           self._predictions, 
                                                           self._proposal_targets], feed_dict=feed_dict)
