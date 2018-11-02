@@ -373,7 +373,7 @@ class Network(object):
       rpn_bbox_outside_weights = self._anchor_targets['rpn_bbox_outside_weights']
       rpn_loss_box = self._smooth_l1_loss(rpn_bbox_pred, rpn_bbox_targets, rpn_bbox_inside_weights,
                                           rpn_bbox_outside_weights, sigma=sigma_rpn, dim=[1, 2, 3])
-     # mask
+      # mask
       mask = tf.abs(tf.reshape(self._proposal_targets['labels_mask'], (-1,1)))
 
       # RCNN, class loss
@@ -389,11 +389,9 @@ class Network(object):
       nof_poss = (tf.reduce_sum(tf.to_float((tf.equal(label, 1) | tf.equal(label, 2)) & tf.not_equal(expand_mask, 0)), axis=1))
       nof_bgs = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(label, 3) & tf.not_equal(expand_mask, 0)), axis=1))
       bg_factor = 0.5 * tf.to_float(nof_poss) / nof_bgs
-      #bg_factor = tf.squeeze(bg_factor)
       
       nof_negs = (1.0 + tf.reduce_sum(tf.to_float(tf.equal(label, 0) & tf.not_equal(expand_mask, 0)), axis=1))
       neg_factor = 0.5 * tf.to_float(nof_poss) / nof_negs
-      #neg_factor = tf.squeeze(neg_factor)
 
       expand_mask_bg_factor = tf.transpose(tf.transpose(expand_mask) * bg_factor)
       expand_mask_neg_factor = tf.transpose(tf.transpose(expand_mask) * neg_factor)
@@ -413,9 +411,9 @@ class Network(object):
       cls_score = tf.reshape(self._predictions["cls_score_baseline"], [-1, self._num_classes])  
       ce = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=cls_score, labels=label)
       w_ce = tf.multiply(expand_mask, ce)
-      cross_entropy_baseline = tf.to_float(Q) * tf.reduce_sum(w_ce) / nof
+      cross_entropy_baseline = 0.5 * tf.to_float(Q) * tf.reduce_sum(w_ce) / nof
 
-      cross_entropy = cross_entropy_gpi + 0.5 * cross_entropy_baseline
+      cross_entropy = cross_entropy_gpi + cross_entropy_baseline
 
       mask = self._proposal_targets['labels_mask']
       mask = tf.where(mask > 0.1, tf.ones_like(mask), tf.zeros_like(mask)) 
@@ -496,9 +494,19 @@ class Network(object):
       self._losses['rel_cross_entropy0'] = rel_cross_entropy0
       self._losses['ent_cross_entropy0'] = ent_cross_entropy0
       
-      #loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0 + 0.2 * cross_entropy
-      #loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.2 * cross_entropy
-      loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.1 * cross_entropy + 0.01 * ent_cross_entropy + 0.01 * rel_cross_entropy + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0
+      loss_mode = "MAIN"
+      if loss_mode == "RR_ONLY":
+          # rr only
+          loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.2 * cross_entropy      
+      elif loss_mode == "SECOND_STAGE_ONLY" or loss_mode == "SG_ONLY":
+          # second stage + sg only
+          loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.01 * ent_cross_entropy + 0.01 * rel_cross_entropy + 0.2 * cross_entropy_gpi
+      elif loss_mode == "BASELINE":
+          # baseline
+          loss = rpn_cross_entropy + rpn_loss_box + 0.2 * cross_entropy_baseline
+      elif loss_mode == "MAIN":
+          # main
+          loss = rpn_cross_entropy + rpn_loss_box + loss_box + 0.1 * cross_entropy + 0.01 * ent_cross_entropy + 0.01 * rel_cross_entropy + 0.01 * ent_cross_entropy0 + 0.01 * rel_cross_entropy0
       regularization_loss = tf.add_n(tf.losses.get_regularization_losses(), 'regu')
       self._losses['total_loss'] = loss# + regularization_loss
 

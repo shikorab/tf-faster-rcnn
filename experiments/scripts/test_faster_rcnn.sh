@@ -52,7 +52,7 @@ set +x
   NET_FINAL=output/${NET}/${DIR}/default/${NET_FINAL}.ckpt
 set -x
 
-CUDA_VISIBLE_DEVICES=${GPU_ID} time python ./tools/test_net.py \
+CUDA_VISIBLE_DEVICES=${GPU_ID} time python -m pdb ./tools/test_net.py \
   --imdb ${TEST_IMDB} \
   --model ${NET_FINAL} \
   --cfg experiments/cfgs/${NET}.yml \

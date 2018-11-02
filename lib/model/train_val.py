@@ -48,7 +48,7 @@ class SolverWrapper(object):
     A wrapper class for the training process
   """
 
-    def __init__(self, sess, network, imdb, roidb, valroidb, output_dir = "", tbdir = "", pretrained_model=None):
+    def __init__(self, sess, network, imdb, roidb, valroidb, output_dir = "", tbdir = "", pretrained_model=""):
         self.net = network
         self.imdb = imdb
         self.roidb = roidb
@@ -116,10 +116,6 @@ class SolverWrapper(object):
             last_snapshot_iter = pickle.load(fid)
 
             np.random.set_state(st0)
-            #self.data_layer._cur = cur
-            #self.data_layer._perm = perm
-            #self.data_layer_val._cur = cur_val
-            #self.data_layer_val._perm = perm_val
 
         return last_snapshot_iter
 
@@ -232,11 +228,6 @@ class SolverWrapper(object):
         # Set the learning rate
         rate = cfg.TRAIN.LEARNING_RATE
         stepsizes = cfg.TRAIN.STEPSIZE
-        #for stepsize in cfg.TRAIN.STEPSIZE:
-        #    if last_snapshot_iter > stepsize:
-        #        rate *= cfg.TRAIN.GAMMA
-        #    else:
-        #       stepsizes.append(stepsize)
 
         return rate, last_snapshot_iter, stepsizes, np_paths, ss_paths
 
@@ -285,7 +276,6 @@ class SolverWrapper(object):
             variables = tf.global_variables()
             var_keep_dic = self.get_variables_in_checkpoint_file(sfiles[-1])
             variables_to_restore = self.net.get_variables_to_restore(variables, var_keep_dic)
-            #variables_to_restore = var_keep_dic
             self.saver = tf.train.Saver(variables_to_restore, max_to_keep=100000, reshape=True)
             
             rate, last_snapshot_iter, stepsizes, np_paths, ss_paths = self.restore(sess,
@@ -409,12 +399,14 @@ class SolverWrapper(object):
                         
                 
                 for query_index in range(gt.shape[0]):
-                    results = iou_test(gt[query_index], gt_bbox_norm, 
+                    results = iou_test(gt[query_index], gt_bbox_norm,
+                                       proposal_targets["labels_mask"], 
                                        proposal_targets["labels"][query_index, :, 0], 
                                        predictions["cls_pred_gpi"][query_index], 
                                        predictions["cls_prob_gpi"][query_index], 
                                        pred_boxes, blobs['im_info'])
-                    results_baseline = iou_test(gt[query_index], gt_bbox_norm, 
+                    results_baseline = iou_test(gt[query_index], gt_bbox_norm,
+                                       proposal_targets["labels_mask"], 
                                        proposal_targets["labels"][query_index, :, 0], 
                                        predictions["cls_pred_baseline"][query_index], 
                                        predictions["cls_prob_baseline"][query_index], 
@@ -459,14 +451,24 @@ def print_stat(name, epoch, epoch_iter, lr, accum_results, losses):
     obj_kl = float(accum_results['obj_kl']) / accum_results['total']
 
     acc = float(accum_results['acc']) / accum_results['total']
-    acc0 = float(accum_results['acc0']) / (accum_results['acc0_total'] + 1.0)
-    acc1 = float(accum_results['acc1']) / (accum_results['acc1_total'] + 1.0)
-    acc2 = float(accum_results['acc2']) / (accum_results['acc2_total'] + 1.0)
-    acc3 = float(accum_results['acc3']) / (accum_results['acc3_total'] + 1.0)
     prec0 = float(accum_results['prec0']) / (accum_results['prec0_total'] + 1.0)
     prec1 = float(accum_results['prec1']) / (accum_results['prec1_total'] + 1.0)
     prec2 = float(accum_results['prec2']) / (accum_results['prec2_total'] + 1.0)
     prec3 = float(accum_results['prec3']) / (accum_results['prec3_total'] + 1.0)
+    recall0 = float(accum_results['recall0']) / (accum_results['recall0_total'] + 1.0)
+    recall1 = float(accum_results['recall1']) / (accum_results['recall1_total'] + 1.0)
+    recall2 = float(accum_results['recall2']) / (accum_results['recall2_total'] + 1.0)
+    recall3 = float(accum_results['recall3']) / (accum_results['recall3_total'] + 1.0)
+    try:   
+        f10 = 2 * recall0 * prec0 / (recall0 + prec0)
+        f11 = 2 * recall1 * prec1 / (recall1 + prec1)
+        f12 = 2 * recall2 * prec2 / (recall2 + prec2)
+        f13 = 2 * recall3 * prec3 / (recall3 + prec3)
+    except:
+        f10 = 0
+        f11 = 0
+        f12 = 0
+        f13 = 0
 
     sub_iou_bl = float(accum_results['sub_iou_bl']) / accum_results['total_bl']
     obj_iou_bl = float(accum_results['obj_iou_bl']) / accum_results['total_bl']
@@ -474,15 +476,24 @@ def print_stat(name, epoch, epoch_iter, lr, accum_results, losses):
     obj_kl_bl = float(accum_results['obj_kl_bl']) / accum_results['total_bl']
 
     acc_bl = float(accum_results['acc_bl']) / accum_results['total_bl']
-    acc0_bl = float(accum_results['acc0_bl']) / (accum_results['acc0_total_bl'] + 1.0)
-    acc1_bl = float(accum_results['acc1_bl']) / (accum_results['acc1_total_bl'] + 1.0)
-    acc2_bl = float(accum_results['acc2_bl']) / (accum_results['acc2_total_bl'] + 1.0)
-    acc3_bl = float(accum_results['acc3_bl']) / (accum_results['acc3_total_bl'] + 1.0)
     prec0_bl = float(accum_results['prec0_bl']) / (accum_results['prec0_total_bl'] + 1.0)
     prec1_bl = float(accum_results['prec1_bl']) / (accum_results['prec1_total_bl'] + 1.0)
     prec2_bl = float(accum_results['prec2_bl']) / (accum_results['prec2_total_bl'] + 1.0)
     prec3_bl = float(accum_results['prec3_bl']) / (accum_results['prec3_total_bl'] + 1.0)
-
+    recall0_bl = float(accum_results['recall0_bl']) / (accum_results['recall0_total_bl'] + 1.0)
+    recall1_bl = float(accum_results['recall1_bl']) / (accum_results['recall1_total_bl'] + 1.0)
+    recall2_bl = float(accum_results['recall2_bl']) / (accum_results['recall2_total_bl'] + 1.0)
+    recall3_bl = float(accum_results['recall3_bl']) / (accum_results['recall3_total_bl'] + 1.0)
+    try:
+        f10_bl = 2 * recall0_bl * prec0_bl / (recall0_bl + prec0_bl)
+        f11_bl = 2 * recall1_bl * prec1_bl / (recall1_bl + prec1_bl)
+        f12_bl = 2 * recall2_bl * prec2_bl / (recall2_bl + prec2_bl)
+        f13_bl = 2 * recall3_bl * prec3_bl / (recall3_bl + prec3_bl)
+    except:
+        f10_bl = 0
+        f11_bl = 0
+        f12_bl = 0
+        f13_bl = 0
     print('\n###### %s (%s): epoch %d iter: %d, total loss: %.4f lr: %f' % \
           (name, cfg.TRAIN.SNAPSHOT_PREFIX, epoch, int(epoch_iter), losses["total_loss"] / epoch_iter, lr.eval()))
     print('###scene-graph')
@@ -492,12 +503,17 @@ def print_stat(name, epoch, epoch_iter, lr, accum_results, losses):
     print('>>> rpn_loss_cls: %.6f rpn_loss_box: %.6f loss_box: %.6f' % (losses["rpn_cross_entropy"] / epoch_iter, losses["rpn_loss_box"] / epoch_iter, losses["loss_box"] / epoch_iter))
     print('###gpi loss: %.6f' % (losses["cross_entropy_gpi"] / epoch_iter))
     print('sub_iou: %.4f obj_iou: %.4f sub_kl: %.4f obj_kl: %.4f rpn_overlaps: %.4f' % (sub_iou, obj_iou, sub_kl, obj_kl, accum_results["gpi_overlaps"] / epoch_iter))
-    print('acc: %.4f acc0: %.4f  acc1: %.4f  acc2: %.4f  acc3: %.4f' % (acc, acc0, acc1, acc2, acc3))
-    print('            prec0: %.4f prec1: %.4f prec2: %.4f prec3: %.4f' % (prec0, prec1, prec2, prec3))
+    print('acc: %.4f ' % (acc))
+    print('recall0: %.4f recall1: %.4f recall2: %.4f recall3: %.4f' % (recall0, recall1, recall2, recall3))
+    print('prec0: %.4f prec1: %.4f prec2: %.4f prec3: %.4f' % (prec0, prec1, prec2, prec3))
+    print('f10: %.4f f11: %.4f f12: %.4f f13: %.4f' % (f10, f11, f12, f13))
+
     print('###baseline loss: %.6f' % (losses["cross_entropy_baseline"] / epoch_iter))
-    print('>>> sub_iou_bl: %.4f obj_iou_bl: %.4f sub_kl_bl: %.4f obj_kl_bl: %.4f rpn_overlaps_bl: %.4f' % (sub_iou_bl, obj_iou_bl, sub_kl_bl, obj_kl_bl, accum_results["baseline_overlaps"] / epoch_iter))
-    print('>>> acc_bl: %.4f acc0_bl: %.4f  acc1_bl: %.4f  acc2_bl: %.4f  acc3_bl: %.4f' % (acc_bl, acc0_bl, acc1_bl, acc2_bl, acc3_bl))
-    print('>>>                prec0_bl: %.4f prec1_bl: %.4f prec2_bl: %.4f prec3_bl: %.4f' % (prec0_bl, prec1_bl, prec2_bl, prec3_bl))
+    print('sub_iou_bl: %.4f obj_iou_bl: %.4f sub_kl_bl: %.4f obj_kl_bl: %.4f rpn_overlaps_bl: %.4f' % (sub_iou_bl, obj_iou_bl, sub_kl_bl, obj_kl_bl, accum_results["baseline_overlaps"] / epoch_iter))
+    print('acc_bl: %.4f' % (acc_bl))
+    print('recall0_bl: %.4f recall1_bl: %.4f recall2_bl: %.4f recall3_bl: %.4f' % (recall0_bl, recall1_bl, recall2_bl, recall3_bl))
+    print('prec0_bl: %.4f prec1_bl: %.4f prec2_bl: %.4f prec3_bl: %.4f' % (prec0_bl, prec1_bl, prec2_bl, prec3_bl))
+    print('f10_bl: %.4f f11_bl: %.4f f12_bl: %.4f f13_bl: %.4f' % (f10_bl, f11_bl, f12_bl, f13_bl))
 
 def get_training_roidb(imdb):
     """Returns a roidb (Region of Interest database) for use in training."""
@@ -542,8 +558,8 @@ def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
               pretrained_model=None,
               max_iters=100, just_test=False):
     """Train a Faster R-CNN network."""
-    #roidb = filter_roidb(roidb)
-    #valroidb = filter_roidb(valroidb)
+    #pretrained_model="output/res101/VisualGenome/default/gpir_imagenet_baseline_iter_7.ckpt"
+    #just_test=True
 
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
@@ -557,6 +573,7 @@ def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
 
 
 MASK_WIDTH = 14
+MASK_HEIGHT = 14
 def softmax(x):
     xexp = np.exp(x)
     return xexp / np.sum(xexp, axis=-1, keepdims=1)
@@ -597,7 +614,7 @@ def rpn_test(gt_bbox, pred_boxes0, pred_boxes, gt_ent, gt_rel, predictions):
     
     return results
 
-def iou_test(gt, gt_bbox, pred_label, pred, pred_prob, pred_bbox, im_info):
+def iou_test(gt, gt_bbox, pred_mask, pred_label, pred, pred_prob, pred_bbox, im_info):
     results = {}
     # number of objects
     results["total"] = 1
@@ -607,27 +624,32 @@ def iou_test(gt, gt_bbox, pred_label, pred, pred_prob, pred_bbox, im_info):
     results["sub_kl"] = 0.0
     results["obj_kl"] = 0.0
     
+    # accuracy
     results["acc"] = np.sum(pred == pred_label).astype(float) / pred_label.shape[0] 
+   
+    # precision
     for i in range(4):
-        total = np.sum(pred_label == i).astype(float)
+        total = np.sum(np.logical_and(pred == i, pred_mask != 0)).astype(float)
         if total != 0:
-            results["acc" + str(i)] = np.sum(np.logical_and(pred == pred_label, pred_label == i)).astype(float) / total
-            results["acc" + str(i) + "_total"] = 1.0
-        else:
-            results["acc" + str(i)] = 0.0
-            results["acc" + str(i) + "_total"] = 0.0
-
-    for i in range(4):
-        total = np.sum(pred == i).astype(float)
-        if total != 0:
-            results["prec" + str(i)] = np.sum(np.logical_and(pred == pred_label, pred_label == i)).astype(float) / total
+            results["prec" + str(i)] = np.sum(np.logical_and(np.logical_and(pred == pred_label, pred_label == i), pred_mask != 0)).astype(float) / total
             results["prec" + str(i) + "_total"] = 1.0
         else:
             results["prec" + str(i)] = 0.0
             results["prec" + str(i) + "_total"] = 0.0
 
+    # recall
+    for i in range(4):
+        total = np.sum(np.logical_and(pred_label == i, pred_mask != 0)).astype(float)
+        if total != 0:
+            results["recall" + str(i)] = np.sum(np.logical_and(np.logical_and(pred == pred_label, pred_label == i), pred_mask != 0)).astype(float) / total
+            results["recall" + str(i) + "_total"] = 1.0
+        else:
+            results["recall" + str(i)] = 0.0
+            results["recall" + str(i) + "_total"] = 0.0
+
+    
     width = MASK_WIDTH
-    height = MASK_WIDTH#int(np.ceil(float(MASK_WIDTH) / im_info[1] * im_info[0]))
+    height = MASK_HEIGHT
     MASK_SHAPE = (width, height) 
     mask_sub_gt = np.zeros(MASK_SHAPE, dtype=float)
     mask_obj_gt = np.zeros(MASK_SHAPE, dtype=float)
@@ -709,3 +731,4 @@ def kl(mask_gt, mask_pred):
     pred = mask_pred.astype(float) / (np.sum(mask_pred) + k.backend.epsilon())
     x = np.log(k.backend.epsilon() + gt/(pred + k.backend.epsilon()))
     return np.sum(x * gt)
+
