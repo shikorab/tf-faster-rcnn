@@ -13,6 +13,7 @@ class Gpi(object):
         self.reuse = None
         self.sg_as_features = sg_as_features
         self.phase_ph = phase_ph
+        self.attention = {}
 
     def predict(self, node_features, relation_features, gt_node_features, gt_relation_features):
         self.reuse = False
@@ -73,6 +74,7 @@ class Gpi(object):
                 self.object_ngbrs_scores = self.nn(features=self.object_ngbrs, layers=self.layers, out=self.nof_node_features,
                                                    scope_name="nn_phi_atten")
                 self.object_ngbrs_weights = tf.nn.softmax(self.object_ngbrs_scores, dim=1)
+                self.attention["neighbour"] = tf.reduce_mean(self.object_ngbrs_weights, axis=2) 
                 self.object_ngbrs_phi_all = tf.reduce_sum(tf.multiply(self.object_ngbrs_phi, self.object_ngbrs_weights),
                                                           axis=1)
 
@@ -80,6 +82,8 @@ class Gpi(object):
                 self.object_ngbrs_scores = self.nn(features=self.object_ngbrs, layers=[self.nof_node_features], out=1,
                                                    scope_name="nn_phi_atten")
                 self.object_ngbrs_weights = tf.nn.softmax(self.object_ngbrs_scores, dim=1)
+                self.attention["neighbour"] = tf.squeeze(self.object_ngbrs_weights) 
+                
                 self.object_ngbrs_phi_all = tf.reduce_sum(tf.multiply(self.object_ngbrs_phi, self.object_ngbrs_weights),
                                                           axis=1)
             else:
@@ -98,12 +102,14 @@ class Gpi(object):
                 self.object_ngbrs2_weights = tf.nn.softmax(self.object_ngbrs2_scores, dim=0)
                 self.object_ngbrs2_alpha_all = tf.reduce_sum(
                     tf.multiply(self.object_ngbrs2_alpha, self.object_ngbrs2_weights), axis=0)
+                self.attention["node"] = tf.reduce_mean(self.object_ngbrs2_weights, axis=1)
             elif self.gpi_type == "NeighbourAttention":
                 self.object_ngbrs2_scores = self.nn(features=self.object_ngbrs2, layers=[self.nof_node_features], out=1,
                                                     scope_name="nn_phi2_atten")
                 self.object_ngbrs2_weights = tf.nn.softmax(self.object_ngbrs2_scores, dim=0)
                 self.object_ngbrs2_alpha_all = tf.reduce_sum(
                     tf.multiply(self.object_ngbrs2_alpha, self.object_ngbrs2_weights), axis=0)
+                self.attention["node"] = tf.squeeze(self.object_ngbrs2_weights)
             else:
                 self.object_ngbrs2_alpha_all = tf.reduce_sum(self.object_ngbrs2_alpha, axis=0) / tf.constant(64.0)
 

@@ -696,16 +696,18 @@ class Network(object):
     
     if train_op != None:
       feed_dict[self._phase_ph] = True
-      losses, predictions, proposal_targets, _ = sess.run([self._losses, 
+      losses, predictions, proposal_targets, gpi_attention, _ = sess.run([self._losses, 
                                                           self._predictions, 
                                                           self._proposal_targets,
+                                                          self.gpi.attention,
                                                           train_op], feed_dict=feed_dict)
     else:
       feed_dict[self._phase_ph] = False
-      losses, predictions, proposal_targets = sess.run([self._losses, 
+      losses, predictions, proposal_targets, gpi_attention = sess.run([self._losses, 
                                                           self._predictions, 
-                                                          self._proposal_targets], feed_dict=feed_dict)
-    return losses, predictions, proposal_targets
+                                                          self._proposal_targets,
+                                                          self.gpi.attention], feed_dict=feed_dict)
+    return losses, predictions, proposal_targets, gpi_attention
 
   def train_step_with_summary(self, sess, blobs, train_op):
     feed_dict = {self._image: blobs['data'], self._im_info: blobs['im_info'],

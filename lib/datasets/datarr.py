@@ -240,7 +240,7 @@ class datarr(imdb):
             'query' : queries,
             'partial_entity_class' : partial_entity_class,
             'partial_relation_class' : partial_relation_class,
-            'orig_image': None}
+            'orig_image': image}
 
   def _get_comp_id(self):
     comp_id = (self._comp_id + '_' + self._salt if self.config['use_salt']

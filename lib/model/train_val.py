@@ -18,11 +18,13 @@ try:
 except ImportError:
     import pickle
 import numpy as np
+np.set_printoptions(threshold=np.nan)
 import os
 import sys
 import glob
 import time
 import math
+import cv2
 
 import tensorflow as tf
 from tensorflow.python import pywrap_tensorflow
@@ -68,13 +70,13 @@ class SolverWrapper(object):
             os.makedirs(self.output_dir)
 
         # Store the model snapshot
-        filename = cfg.TRAIN.SNAPSHOT_PREFIX + '_iter_{:d}'.format(iter) + '.ckpt'
+        filename = cfg.TRAIN.SNAPSHOT_PREFIX + '_iter_{:d}' % (iter) + '.ckpt'
         filename = os.path.join(self.output_dir, filename)
         self.saver.save(sess, filename)
-        print('Wrote snapshot to: {:s}'.format(filename))
+        print('Wrote snapshot to: {:s}' % (filename))
 
         # Also store some meta information, random state, etc.
-        nfilename = cfg.TRAIN.SNAPSHOT_PREFIX + '_iter_{:d}'.format(iter) + '.pkl'
+        nfilename = cfg.TRAIN.SNAPSHOT_PREFIX + '_iter_{:d}' % (iter) + '.pkl'
         nfilename = os.path.join(self.output_dir, nfilename)
         # current state of numpy random
         st0 = np.random.get_state()
@@ -99,7 +101,7 @@ class SolverWrapper(object):
         return filename, nfilename
 
     def from_snapshot(self, sess, sfile, nfile):
-        print('Restoring model snapshots from {:s}'.format(sfile))
+        print('Restoring model snapshots from {:s}' % (sfile))
         init = tf.global_variables_initializer()
         sess.run(init)
         self.saver.restore(sess, sfile)
@@ -340,12 +342,19 @@ class SolverWrapper(object):
         accum_losses = None
         epoch_iter = 0.0
 
+        image_stat = '2376309.jpg'
+        objs_cat = ["giraffe", "bowl", "food", "face", "people", "shirt", "bench", "light", "head", "zebra", "cow", "sign", "motorcycle", "floor", "hat", "sheep", "truck", "water", "chair", "field", "door", "pizza", "tree", "car", "leg", "bag", "fence", "sidewalk", "girl", "leaves", "jacket", "windows", "road", "glass", "bed", "sand", "trees", "player", "helmet", "man", "grass", "cake", "bear", "hand", "cloud", "street", "ground", "airplane", "mirror", "clock", "plate", "ear", "hair", "window", "boy", "clouds", "handle", "counter", "glasses", "pants", "eye", "pole", "line", "wall", "animal", "shadow", "train", "bike", "boat", "horse", "tail", "nose", "beach", "snow", "elephant", "bottle", "surfboard", "cat", "skateboard", "shorts", "woman", "bird", "sky", "shelf", "tracks", "kite", "umbrella", "guy", "building", "dog", "background", "table", "child", "lady", "plane", "desk", "bus", "wheel", "arm", "person"]
+
+        rels_cat = ["wearing a", "made of", "on front of", "with a", "WEARING", "above", "carrying", "has an", "covering", "and", "wears", "around", "with", "laying on", "inside", "attached to", "at", "on a", "of a", "hanging on", "near", "OF", "sitting on", "of", "next to", "riding", "under", "over", "behind", "sitting in", "ON", "eating", "to", "in a", "has", "parked on", "covered in", "holding", "for", "playing", "against", "by", "from", "has a", "standing on", "on side of", "in", "wearing", "watching", "walking on", "beside", "below", "IN", "mounted on", "have", "are on", "are in", "in front of", "looking at", "belonging to", "on top of", "holds", "inside of", "along", "hanging from", "standing in", "says", "painted on", "between", "on"]
+        color = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 0, 255), (255, 255, 0), (0, 255, 255), (0, 0, 0), (255, 255, 255), (128, 128, 128), (128, 0, 0), (0, 128, 0), (0, 0, 128)]
         timer = Timer()
         # Get training data, one batch at a time
         while True:
             timer.tic()
 
             blobs, new_epoch = data_layer.forward()
+            if blobs["orig_image"].split(".")[0] not in ["150500"]:#, "2396405", "2384930", "2396809", "2332739", "2320584", "2408814", "2350169", "2340600"]:
+                continue
             
             if new_epoch and epoch_iter != 0.0:
                 print_stat(name, epoch, epoch_iter, lr, accum_results, accum_losses)
@@ -358,7 +367,7 @@ class SolverWrapper(object):
 
             # Compute the graph without summary
             try:
-                losses, predictions, proposal_targets = self.net.train_step(sess, blobs, train_op)
+                losses, predictions, proposal_targets, gpi_attention = self.net.train_step(sess, blobs, train_op)
                 if math.isnan(losses["total_loss"]):
                     print("total loss is nan - iter %d" % (int(epoch_iter)))
                     continue
@@ -380,12 +389,15 @@ class SolverWrapper(object):
 
                 # normalize boxes to [0-1]
                 gt_bbox_norm = gt_bbox.copy()
+                boxes0_norm = boxes0.copy()
+                pred_boxes_norm = pred_boxes.copy()
                 for i in range(4):
-                    pred_boxes[:, i] /= im[(i+1)%2]
+                    pred_boxes_norm[:, i] /= im[(i+1)%2]
                     gt_bbox_norm[:, i] /= im[(i+1)%2]
-                    boxes0[:, i] /= im[(i+1)%2]
-                
-                rpn_results = rpn_test(gt_bbox_norm, boxes0, pred_boxes, gt_ent, gt_rel, predictions)
+                    boxes0_norm[:, i] /= im[(i+1)%2]
+    
+                                    
+                rpn_results = rpn_test(gt_bbox_norm, boxes0_norm, pred_boxes_norm, gt_ent, gt_rel, predictions)
                 if accum_results == None:
                     first_result = True
                     accum_results = rpn_results
@@ -397,21 +409,21 @@ class SolverWrapper(object):
                     for key in losses:
                         accum_losses[key] += losses[key]
                         
-                
+                first_img_result = True
+                img_results = {}
                 for query_index in range(gt.shape[0]):
                     results = iou_test(gt[query_index], gt_bbox_norm,
                                        proposal_targets["labels_mask"], 
                                        proposal_targets["labels"][query_index, :, 0], 
                                        predictions["cls_pred_gpi"][query_index], 
                                        predictions["cls_prob_gpi"][query_index], 
-                                       pred_boxes, blobs['im_info'])
+                                       pred_boxes_norm, blobs['im_info'])
                     results_baseline = iou_test(gt[query_index], gt_bbox_norm,
                                        proposal_targets["labels_mask"], 
                                        proposal_targets["labels"][query_index, :, 0], 
                                        predictions["cls_pred_baseline"][query_index], 
                                        predictions["cls_prob_baseline"][query_index], 
-                                       boxes0, blobs['im_info'])
-                    
+                                       boxes0_norm, blobs['im_info'])
                     # accumulate results
                     if first_result:
                         for key in results:
@@ -425,6 +437,231 @@ class SolverWrapper(object):
                             accum_results[key] += results[key]
                         for key in results_baseline:
                             accum_results[key + "_bl"] += results_baseline[key]
+
+                    # accumulate results
+                    if first_img_result:
+                        for key in results:
+                            img_results[key] = results[key]
+                        for key in results_baseline:
+                            img_results[key + "_bl"] = results_baseline[key]
+                        first_img_result = False
+
+                    else:
+                        for key in results:
+                            img_results[key] += results[key]
+                        for key in results_baseline:
+                            img_results[key + "_bl"] += results_baseline[key]
+                    
+                acc = float(img_results['acc']) / img_results['total']
+                nof_queries = blobs['query'].shape[0]
+                sub_iou = float(img_results['sub_iou']) / img_results['total']
+                obj_iou = float(img_results['obj_iou']) / img_results['total']
+                if True: #sub_iou + obj_iou < 0.3: #(sub_iou <= 0.85 or obj_iou <= 0.85) and sub_iou > 0.75 and obj_iou > 0.75:
+                    path = blobs["orig_image"].split(".")[0]
+                    os.mkdir(path)
+                    file_str = os.path.join(path, "stat.txt")
+                    with open(file_str, 'a') as f:
+                        cv2.imwrite(os.path.join(path, "img_orig.jpg"), blobs["data"][0].copy() + cfg.PIXEL_MEANS)
+                        f.write("image = %s\n" % (blobs["orig_image"]))
+                        f.write("queries (%d)\n" % (nof_queries))
+                        for q in range(nof_queries):
+                            sub = np.argmax(blobs['query'][q, :100])
+                            rel = np.argmax(blobs['query'][q, 100:170])
+                            obj = np.argmax(blobs['query'][q, 170:270])
+                            f.write("query %d: %d-%d-%d %s-%s-%s\n" % (q, sub, rel, obj, objs_cat[sub], rels_cat[rel], objs_cat[obj]))
+
+                        f.write("gt boxes\n")
+                        f.write("------\n")
+                        f.write(str(gt_bbox) + "\n")
+                        img_gt = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                        for bb in range(gt_bbox.shape[0]):
+                            cv2.rectangle(img_gt, (gt_bbox[bb, 0], gt_bbox[bb, 1]), (gt_bbox[bb, 2], gt_bbox[bb, 3]), color[bb % len(color)], 5)
+                        cv2.imwrite(os.path.join(path, "img_gt.jpg"), img_gt)
+                         
+                        f.write("boxes0\n")
+                        f.write("------\n")
+                        f.write(str(boxes0) + "\n")
+                        img_boxes0 = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                        for bb in range(boxes0.shape[0]):
+                            if predictions["cls_pred_baseline"][0][bb] != 0:
+                                cv2.rectangle(img_boxes0, (int(boxes0[bb, 0]), int(boxes0[bb, 1])), (int(boxes0[bb, 2]), int(boxes0[bb, 3])), color[bb % len(color) ], 5)
+                        cv2.imwrite(os.path.join(path, "img_boxes0.jpg"), img_boxes0)
+                         
+                        f.write("pred_boxes\n")
+                        f.write("------\n")
+                        f.write(str(pred_boxes) + "\n")
+                        img_pred = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                        for bb in range(pred_boxes.shape[0]):
+                            if predictions["cls_pred_gpi"][0][bb] != 0:
+                                    cv2.rectangle(img_pred, (int(pred_boxes[bb, 0]), int(pred_boxes[bb, 1])), (int(pred_boxes[bb, 2]), int(pred_boxes[bb, 3])), color[bb % len(color)], 5)
+                        cv2.imwrite(os.path.join(path, "img_pred_boxes.jpg"), img_pred)
+                        
+                        img_pred = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                        for bb in range(pred_boxes.shape[0]):
+                            if predictions["cls_pred_gpi"][0][bb] == 0:
+                                    cv2.rectangle(img_pred, (int(pred_boxes[bb, 0]), int(pred_boxes[bb, 1])), (int(pred_boxes[bb, 2]), int(pred_boxes[bb, 3])), color[bb % len(color)], 5)
+                        cv2.imwrite(os.path.join(path, "img_pred_filtered_boxes.jpg"), img_pred)
+                        
+                        f.write("gt entity labels\n")
+                        f.write("------\n")
+                        f.write(str(np.argmax(gt_ent, axis=1)) + "\n")
+                        f.write("gt realtion labels\n")
+                        f.write("------\n")
+                        f.write(str(np.argmax(gt_rel, axis=2)) + "\n")
+                        f.write("gt rr labels\n")
+                        f.write("------\n")
+                        f.write(str(proposal_targets["labels"][:, :, 0]) + "\n")
+                        f.write("rr prediction\n")
+                        f.write("------\n")
+                        subsq = [3, 4]
+                        objsq = [0, 24] 
+                        for q_i in range(nof_queries):
+                            sub = objs_cat[np.argmax(blobs['query'][q_i, :100])]
+                            rel = rels_cat[np.argmax(blobs['query'][q_i, 100:170])]
+                            obj = objs_cat[np.argmax(blobs['query'][q_i, 170:270])]
+                            #prediction
+                            if np.where(predictions["cls_pred_gpi"][q_i] == 1)[0].shape[0] == 0:
+                                subs = np.asarray([np.argmax(predictions["cls_prob_gpi"][q_i, :, 1])])  
+	                    else:
+                                subs = np.where(predictions["cls_pred_gpi"][q_i] == 1)[0]
+                            if np.where(predictions["cls_pred_gpi"][q_i] == 2)[0].shape[0] == 0:
+                                objs = np.asarray([np.argmax(predictions["cls_prob_gpi"][q_i, :, 2])])
+	                    else:
+                                objs = np.where(predictions["cls_pred_gpi"][q_i] == 2)[0]
+                            f.write("query %d - sub=%s\n" % (q_i, subs))
+                            f.write("query %d - objs=%s\n" % (q_i, objs))
+                            img_q = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                            
+                            for bb in range(subs.shape[0]):
+                                cv2.rectangle(img_q, (int(pred_boxes[subs[bb], 0]), int(pred_boxes[subs[bb], 1])), (int(pred_boxes[subs[bb], 2]), int(pred_boxes[subs[bb], 3])), (255, 0, 0), 5)
+                            for bb in range(objs.shape[0]):
+                                cv2.rectangle(img_q, (int(pred_boxes[objs[bb], 0]), int(pred_boxes[objs[bb], 1])), (int(pred_boxes[objs[bb], 2]), int(pred_boxes[objs[bb], 3])), (0, 255, 0), 5)
+                            cv2.imwrite(os.path.join(path, "pred_query_%d-%s-%s-%s.jpg" % (q_i, sub, rel, obj)), img_q)
+                            #gt
+                            subs  = np.where(blobs['gt_labels'][q_i] == 1)[0]
+                            objs  = np.where(blobs['gt_labels'][q_i] == 2)[0]
+                            img_q_gt = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                            for bb in range(subs.shape[0]):
+                                cv2.rectangle(img_q_gt, (int(gt_bbox[subs[bb], 0]), int(gt_bbox[subs[bb], 1])), (int(gt_bbox[subs[bb], 2]), int(gt_bbox[subs[bb], 3])), (255, 0, 0), 5)
+                            for bb in range(objs.shape[0]):
+                                cv2.rectangle(img_q_gt, (int(gt_bbox[objs[bb], 0]), int(gt_bbox[objs[bb], 1])), (int(gt_bbox[objs[bb], 2]), int(gt_bbox[objs[bb], 3])), (0, 255, 0), 5)
+                            cv2.imwrite(os.path.join(path, "gt_query_%d-%s-%s-%s.jpg" % (q_i, sub, rel, obj)), img_q_gt)
+                            #neig attention
+                            img_neig_atten_sub = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                            border = np.argsort(gpi_attention["neighbour"])[subsq[q_i], ::-1]
+                            for bb_i in range(min(5, pred_boxes.shape[0])):
+                                bb = border[bb_i]
+                                cv2.rectangle(img_neig_atten_sub, (int(pred_boxes[bb, 0]), int(pred_boxes[bb, 1])), (int(pred_boxes[bb, 2]), int(pred_boxes[bb, 3])), color[bb % len(color) ], 5)
+                                font = cv2.FONT_HERSHEY_SIMPLEX
+                                cv2.putText(img_neig_atten_sub,str(bb_i),(int(pred_boxes[bb, 0]+5), int(pred_boxes[bb, 1]+25)), font, 1,(255,255,255),2,cv2.LINE_AA)
+                            cv2.imwrite(os.path.join(path, "sub_neig_atten_query_%d-%s-%s-%s.jpg" % (q_i, sub, rel, obj)), img_neig_atten_sub)
+                            
+                            img_neig_atten_obj = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                            border = np.argsort(gpi_attention["neighbour"])[objs[0], ::-1]
+                            for bb_i in range(min(4, pred_boxes.shape[0])):
+                                bb = border[bb_i]
+                                cv2.rectangle(img_neig_atten_obj, (int(pred_boxes[bb, 0]), int(pred_boxes[bb, 1])), (int(pred_boxes[bb, 2]), int(pred_boxes[bb, 3])), color[bb % len(color) ], 5)
+                                font = cv2.FONT_HERSHEY_SIMPLEX
+                                cv2.putText(img_neig_atten_obj,str(bb_i),(int(pred_boxes[bb, 0]+5), int(pred_boxes[bb, 1]+25)), font, 1,(255,255,255),2,cv2.LINE_AA)
+                            cv2.imwrite(os.path.join(path, "obj_neig_atten_query_%d-%s-%s-%s.jpg" % (q_i, sub, rel, obj)), img_neig_atten_obj)
+                            
+                        f.write(str(predictions["cls_pred_gpi"]) + "\n")
+                        sub_iou = float(img_results['sub_iou']) / img_results['total']
+                        obj_iou = float(img_results['obj_iou']) / img_results['total']
+                        prec0 = 1.0
+                        prec1 = 1.0
+                        prec2 = 1.0
+                        prec3 = 1.0
+                        recall0 = 1.0
+                        recall1 = 1.0
+                        recall2 = 1.0
+                        recall3 = 1.0
+                        if img_results['prec0_total'] != 0:
+                            prec0 = float(img_results['prec0']) / (img_results['prec0_total'])
+                        if img_results['prec1_total'] != 0:
+                            prec1 = float(img_results['prec1']) / (img_results['prec1_total'])
+                        if img_results['prec2_total'] != 0:
+                            prec2 = float(img_results['prec2']) / (img_results['prec2_total'])
+                        if img_results['prec3_total'] != 0:
+                            prec3 = float(img_results['prec3']) / (img_results['prec3_total'])
+                        if img_results['recall0_total'] != 0:
+                            recall0 = float(img_results['recall0']) / (img_results['recall0_total'])
+                        if img_results['recall1_total'] != 0:
+                            recall1 = float(img_results['recall1']) / (img_results['recall1_total'])
+                        if img_results['recall2_total'] != 0:
+                            recall2 = float(img_results['recall2']) / (img_results['recall2_total'])
+                        if img_results['recall3_total'] != 0:
+                            recall3 = float(img_results['recall3']) / (img_results['recall3_total'])
+                        f.write('sub_iou: %.4f obj_iou: %.4f rpn_overlaps: %.4f\n' % (sub_iou, obj_iou, rpn_results["gpi_overlaps"] / epoch_iter))
+                        f.write('acc: %.4f\n' % (acc))
+                        f.write('recall0: %.4f recall1: %.4f recall2: %.4f recall3: %.4f\n' % (recall0, recall1, recall2, recall3))
+                        f.write('prec0: %.4f prec1: %.4f prec2: %.4f prec3: %.4f\n' % (prec0, prec1, prec2, prec3))
+                        f.write('attention neighbour\n')
+                        f.write('-------------------\n')
+                        f.write(str(gpi_attention["neighbour"]) + "\n")
+                        f.write('attention nodes\n')
+                        f.write('-------------------\n')
+                        f.write(str(gpi_attention["node"])+ "\n")
+                        img_node_atten = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                        border = np.argsort(gpi_attention["node"])[::-1]
+                        for bb_i in range(min(7, pred_boxes.shape[0])):
+                            bb = border[bb_i]
+                            cv2.rectangle(img_node_atten, (int(pred_boxes[bb, 0]), int(pred_boxes[bb, 1])), (int(pred_boxes[bb, 2]), int(pred_boxes[bb, 3])), color[bb % len(color) ], 5)
+                            font = cv2.FONT_HERSHEY_SIMPLEX
+                            cv2.putText(img_node_atten,str(bb_i),(int(pred_boxes[bb, 0]+5), int(pred_boxes[bb, 1]+25)), font, 1,(255,255,255),2,cv2.LINE_AA)
+                        cv2.imwrite(os.path.join(path, "img_node_atten.jpg"), img_node_atten)
+
+                        # scene-graph
+                        f.write('objects\n')
+                        f.write('-------\n')
+                        ent_score = predictions['ent_cls_score']
+                        ent_probe = softmax(ent_score)
+                        ent_probe2 = np.max(ent_probe, axis=1) 
+                        f.write(str(ent_probe2)+ "\n")
+                        ent_pred = np.argmax(ent_probe, axis=1)
+                        ent_pred_w = [objs_cat[ent_pred[i]] for i in range(ent_pred.shape[0])]
+                        for i in range(ent_pred.shape[0]):
+                            if ent_probe2[i] < 0.5 or predictions["cls_pred_gpi"][0][i] == 0:
+                                ent_pred_w[i] = "none"
+                        f.write(str(ent_pred_w) + "\n")
+                        
+                        img_pred = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                        for bb in range(pred_boxes.shape[0]):
+                            if ent_pred_w[bb] != "none":
+                                cv2.rectangle(img_pred, (int(pred_boxes[bb, 0]), int(pred_boxes[bb, 1])), (int(pred_boxes[bb, 2]), int(pred_boxes[bb, 3])), color[bb % len(color)], 5)
+                                font = cv2.FONT_HERSHEY_SIMPLEX
+                                cv2.putText(img_pred, str(bb) + ") " + ent_pred_w[bb],(int(pred_boxes[bb, 0]+5), int(pred_boxes[bb, 1]+25)), font, 1,(255,255,255),2,cv2.LINE_AA)
+                        cv2.imwrite(os.path.join(path, "img_ent_preds.jpg"), img_pred)
+                        
+
+                        f.write('relations\n')
+                        f.write('-------\n')
+                        rel_score = predictions['rel_cls_score']
+                        rel_probe = softmax(rel_score)
+                        rel_probe2 = np.max(rel_probe, axis=2) 
+                        f.write(str(rel_probe2)+ "\n")
+                        rel_pred = np.argmax(rel_probe, axis=2)
+                        #rel_pred_w = [rels_cat[rel_pred[i]] for i in range(ent_pred.shape[0])]
+                        rel_pred_w = [[None] * ent_pred.shape[0]] * ent_pred.shape[0]
+                        for i in range(ent_pred.shape[0]):
+                            for j in range(ent_pred.shape[0]):
+                                if ent_pred_w[i] != "none" and ent_pred_w[j] != "none" and rel_probe2[i,j] > 0.7:
+                                #if np.sum(proposal_targets['partial_relation_class'][i,j]) != 0 and proposal_targets['labels_mask'][i] == 1.0 and proposal_targets['labels_mask'][j] == 1.0:
+                                    rel_pred_w[i][j] = rels_cat[rel_pred[i,j]]
+                                    f.write("(" + str(i) + ", " + str(j) + ") -- > " + "(" + ent_pred_w[i] + ", " + rel_pred_w[i][j] + "," + ent_pred_w[j] + ") - " + str(rel_probe2[i,j]) + "\n")
+                        
+                        
+                        #img_pred = blobs["data"][0].copy() + cfg.PIXEL_MEANS
+                        #for bb in range(pred_boxes.shape[0]):
+                        #    if rel_pred_w[bb] != "none":
+                        #        cv2.rectangle(img_pred, (int(pred_boxes[bb, 0]), int(pred_boxes[bb, 1])), (int(pred_boxes[bb, 2]), int(pred_boxes[bb, 3])), color[bb % len(color)], 5)
+                        #        font = cv2.FONT_HERSHEY_SIMPLEX
+                        #        cv2.putText(img_pred, ent_pred_w[bb],(int(pred_boxes[bb, 0]+5), int(pred_boxes[bb, 1]+25)), font, 1,(255,255,255),2,cv2.LINE_AA)
+                        #cv2.imwrite(os.path.join(path, "img_ent_preds.jpg"), img_pred)
+                        
+
+                        print("saved")
+                
 
                 epoch_iter += 1.0
 
@@ -549,7 +786,7 @@ def filter_roidb(roidb):
     num = len(roidb)
     filtered_roidb = [entry for entry in roidb if is_valid(entry)]
     num_after = len(filtered_roidb)
-    print('Filtered {} roidb entries: {} -> {}'.format(num - num_after,
+    print('Filtered {} roidb entries: {} -> {}' % (num - num_after,
                                                        num, num_after))
     return roidb
 
@@ -558,7 +795,7 @@ def train_net(network, imdb, roidb, valroidb, output_dir, tb_dir,
               pretrained_model=None,
               max_iters=100, just_test=False):
     """Train a Faster R-CNN network."""
-    #pretrained_model="output/res101/VisualGenome/default/gpir_imagenet_baseline_iter_7.ckpt"
+    #pretrained_model="output/res101/VisualGenome/default/gpir_imagenet_train_val_vgrr_flipped_nsgf_cont_iter_0.ckpt"
     #just_test=True
 
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
