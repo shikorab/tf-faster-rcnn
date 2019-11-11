@@ -56,9 +56,9 @@ def proposal_layer(rpn_cls_prob, rpn_bbox_pred, im_info, cfg_key, _feat_stride, 
 def proposal_layer_tf(rpn_cls_prob, rpn_bbox_pred, im_info, cfg_key, _feat_stride, anchors, num_anchors):
   if type(cfg_key) == bytes:
     cfg_key = cfg_key.decode('utf-8')
-  pre_nms_topN = cfg[cfg_key].RPN_PRE_NMS_TOP_N
   post_nms_topN = cfg[cfg_key].RPN_POST_NMS_TOP_N
   nms_thresh = cfg[cfg_key].RPN_NMS_THRESH
+  nms_min_score = cfg[cfg_key].RPN_NMS_MIN_SCORE
 
   # Get the scores and bounding boxes
   scores = rpn_cls_prob[:, :, :, num_anchors:]
@@ -74,7 +74,7 @@ def proposal_layer_tf(rpn_cls_prob, rpn_bbox_pred, im_info, cfg_key, _feat_strid
   boxes = tf.gather(proposals, indices)
   boxes = tf.to_float(boxes)
   scores = tf.gather(scores, indices)
-  indices = tf.where(scores >= tf.minimum(0.8, tf.reduce_max(scores) - 0.01))
+  indices = tf.where(scores >= tf.minimum(nms_min_score, tf.reduce_max(scores) - 0.01))
   indices = tf.reshape(indices, shape=(-1,))
   boxes = tf.gather(boxes, indices)
   scores = tf.gather(scores, indices)

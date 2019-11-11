@@ -142,6 +142,9 @@ __C.TRAIN.RPN_BATCHSIZE = 256
 # NMS threshold used on RPN proposals
 __C.TRAIN.RPN_NMS_THRESH = 0.7
 
+# Minimum score after nms in case at least one proposal is above that score
+__C.TRAIN.RPN_NMS_MIN_SCORE = 0.8
+
 # Number of top scoring boxes to keep before apply NMS to RPN proposals
 __C.TRAIN.RPN_PRE_NMS_TOP_N = 12000
 
@@ -210,7 +213,9 @@ __C.TEST.MODE = 'nms'
 # Only useful when TEST.MODE is 'top', specifies the number of top proposals to select
 __C.TEST.RPN_TOP_N = 5000
 
-__C.SG_AS_FEATURES = False
+# defined to be comparable to previous works
+__C.TEST.MASK_WIDTH = 14
+__C.TEST.MASK_HEIGHT = 14
 
 #
 # ResNet options
@@ -294,8 +299,12 @@ __C.ANCHOR_RATIOS = [0.5,1,2]
 # Number of filters for the RPN layer
 __C.RPN_CHANNELS = 512
 
+# Number of features per entity
+__C.ENTITY_FEATURES_SIZE = 512
 
-    
+# Number of features per relation
+__C.RELATION_FEATURES_SIZE = 512
+
 
 def get_output_dir(imdb, weights_filename):
   """Return the directory where experimental artifacts are placed.
